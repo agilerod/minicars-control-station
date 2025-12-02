@@ -7,6 +7,7 @@ Uso:
 Output:
     dist/backend.exe - Backend standalone con todas las dependencias
 """
+import sys
 import PyInstaller.__main__
 import shutil
 from pathlib import Path
@@ -55,8 +56,8 @@ def build_backend():
         # Hidden imports para pygame
         '--hidden-import', 'pygame',
         
-        # Agregar datos necesarios
-        '--add-data', 'config;config',
+        # Agregar datos necesarios (si existen)
+        # '--add-data', 'config;config',  # Descomentar si config/ es necesario
         
         # Mantener console para ver logs (cambiar a --noconsole si prefieres sin ventana)
         '--console',
