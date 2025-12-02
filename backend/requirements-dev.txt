@@ -1,0 +1,9 @@
+# Development dependencies para el backend MiniCars
+# Incluye herramientas de build y testing
+
+# PyInstaller para empaquetar el backend
+pyinstaller>=6.0.0
+
+# Todas las dependencias de producción
+-r requirements.txt
+

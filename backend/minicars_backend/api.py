@@ -22,8 +22,10 @@ settings = get_settings()
 app = FastAPI()
 
 origins = [
-    "http://localhost:5173",
+    "http://localhost:5173",  # Vite dev
     "http://127.0.0.1:5173",
+    "tauri://localhost",  # Tauri prod
+    "https://tauri.localhost",
 ]
 
 app.add_middleware(
@@ -127,5 +129,29 @@ def set_control_profile(profile: ControlProfile) -> ControlProfile:
         )
     saved = save_profile(profile.dict())
     return ControlProfile(**saved)
+
+
+@app.post("/shutdown")
+async def shutdown():
+    """
+    Graceful shutdown endpoint para cuando Tauri cierra la aplicación.
+    
+    Este endpoint permite que Tauri solicite un cierre limpio del backend
+    antes de matar el proceso.
+    """
+    import signal
+    import os
+    from threading import Thread
+    import time
+    
+    def delayed_shutdown():
+        """Shutdown después de responder."""
+        time.sleep(0.5)  # Dar tiempo para responder
+        os.kill(os.getpid(), signal.SIGTERM)
+    
+    # Iniciar shutdown en thread separado
+    Thread(target=delayed_shutdown, daemon=True).start()
+    
+    return {"status": "shutting down", "message": "Backend shutdown initiated"}
 
 

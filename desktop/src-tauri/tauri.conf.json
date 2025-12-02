@@ -13,7 +13,20 @@
     "bundle": {
       "identifier": "com.minicars.controlstation",
       "icon": ["icons/icon.ico"],
-      "targets": ["nsis", "updater"]
+      "targets": ["nsis", "msi"],
+      "resources": [
+        "../../backend/dist/backend.exe"
+      ],
+      "windows": {
+        "webviewInstallMode": {
+          "type": "embedBootstrapper"
+        }
+      }
+    },
+    "allowlist": {
+      "shell": {
+        "open": true
+      }
     },
     "windows": [
       {

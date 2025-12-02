@@ -212,6 +212,7 @@ __marimo__/
 # Node / frontend
 node_modules/
 dist/
+**/dist/
 .next/
 out/
 
@@ -224,6 +225,15 @@ desktop/src-tauri/target/
 *.pdb
 *.d
 *.exe
+*.dll
+*.so
+*.dylib
+
+# PyInstaller - Backend build artifacts
+backend/dist/
+backend/build/
+backend/*.spec
+*.spec
 
 # Virtualenvs (duplicated intentionally for clarity)
 .venv/
