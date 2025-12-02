@@ -52,5 +52,5 @@ jobs:
           fi
 
       - name: Build frontend
-        run: npm run build:ci:ci
+        run: npm run build:ci
 
