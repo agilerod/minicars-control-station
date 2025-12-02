@@ -194,8 +194,10 @@ git push origin main
 Después de hacer push desde la laptop, en la Jetson:
 
 ```bash
-cd /home/jetson-rod/minicars-jetson
+cd /home/jetson-rod/minicars-control-station
 git pull origin main
+# O usar el script de deployment:
+~/deploy_to_jetson.sh
 ```
 
 ## Estructura del proyecto

@@ -224,7 +224,7 @@ journalctl -u minicars-streamer.service -n 50
 To test the script manually without systemd:
 
 ```bash
-cd /home/jetson-rod/minicars-jetson
+cd /home/jetson-rod/minicars-control-station
 ./start_streamer.py
 ```
 

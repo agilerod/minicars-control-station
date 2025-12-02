@@ -48,16 +48,17 @@ cd "$REPO_PATH" || {
 echo "Directorio actual: $(pwd)"
 echo ""
 
-# Hacer git pull
+# Hacer git pull (con manejo de errores sin internet)
 echo "Actualizando código desde GitHub..."
 echo "-----------------------------------"
 if git pull origin main; then
     echo -e "${GREEN}✓${NC} Código actualizado correctamente"
 else
-    echo -e "${RED}✗${NC} Error al hacer git pull"
+    EXIT_CODE=$?
+    echo -e "${YELLOW}⚠${NC} No se pudo hacer git pull (código: $EXIT_CODE)"
     echo ""
     echo "Posibles causas:"
-    echo "  - Sin conexión a Internet"
+    echo "  - Sin conexión a Internet (continuando con código local...)"
     echo "  - Problemas con SSH keys para GitHub"
     echo "  - El repositorio remoto no está configurado"
     echo ""
@@ -66,9 +67,11 @@ else
     echo ""
     echo "Para verificar el remoto:"
     echo "  git remote -v"
-    exit 1
+    echo ""
+    echo -e "${YELLOW}CONTINUANDO CON CÓDIGO LOCAL EXISTENTE${NC}"
+    echo "(Si no hay internet, asegúrate de que el código local esté actualizado)"
+    echo ""
 fi
-echo ""
 
 # Actualizar permisos del script
 echo "Actualizando permisos..."

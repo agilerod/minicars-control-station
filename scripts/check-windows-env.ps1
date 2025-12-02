@@ -2,8 +2,12 @@ param()
 
 Write-Host "Verificando entorno de compilación para Tauri/Rust en Windows..." -ForegroundColor Cyan
 
-$clPath = (Get-Command cl.exe -ErrorAction SilentlyContinue)?.Source
-$linkPath = (Get-Command link.exe -ErrorAction SilentlyContinue)?.Source
+# Compatible con PowerShell 5.1+ (sin operador ?.)
+$clCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
+$clPath = if ($clCmd) { $clCmd.Source } else { $null }
+
+$linkCmd = Get-Command link.exe -ErrorAction SilentlyContinue
+$linkPath = if ($linkCmd) { $linkCmd.Source } else { $null }
 
 $hasError = $false
 
@@ -31,5 +35,3 @@ if ($hasError) {
 }
 
 Write-Host "Entorno de compilación MSVC detectado correctamente." -ForegroundColor Green
-
-

@@ -7,11 +7,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:ci": "vite build",
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:build": "npm run check-env && tauri build",
     "tauri": "tauri dev",
-    "prebuild": "powershell -ExecutionPolicy Bypass -File ../scripts/check-windows-env.ps1"
+    "check-env": "powershell -ExecutionPolicy Bypass -File ../scripts/check-windows-env.ps1"
   },
   "dependencies": {
     "react": "^18.2.0",
