@@ -1,0 +1,29 @@
+{
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "MiniCars Control Station",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "bundle": {
+      "identifier": "com.minicars.controlstation",
+      "icon": ["icons/icon.ico"],
+      "targets": ["nsis", "updater"]
+    },
+    "windows": [
+      {
+        "title": "MiniCars Control Station",
+        "width": 1200,
+        "height": 800,
+        "resizable": true
+      }
+    ]
+  }
+}
+
+

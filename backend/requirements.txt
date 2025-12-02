@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+pytest
+httpx
+pygame>=2.5.0
+
+

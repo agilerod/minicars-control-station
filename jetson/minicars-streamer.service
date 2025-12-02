@@ -1,0 +1,29 @@
+# MiniCars Jetson GStreamer Service
+#
+# This file is a template that lives in the repository.
+# To deploy:
+#   1. Copy this file to /etc/systemd/system/minicars-streamer.service on the Jetson
+#   2. Adjust User, Group, and paths as needed
+#   3. Run: sudo systemctl daemon-reload
+#   4. Run: sudo systemctl enable minicars-streamer.service
+#   5. Run: sudo systemctl start minicars-streamer.service
+#
+# See jetson/README.md for full deployment instructions.
+
+[Unit]
+Description=MiniCars Jetson GStreamer sender
+After=network-online.target
+
+[Service]
+Type=simple
+# IMPORTANT: adjust User/Group to your Jetson user
+User=jetson-rod
+Group=jetson-rod
+WorkingDirectory=/home/jetson-rod/minicars-control-station/jetson
+ExecStart=/usr/bin/python3 /home/jetson-rod/minicars-control-station/jetson/start_streamer.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+

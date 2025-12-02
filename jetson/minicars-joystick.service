@@ -1,0 +1,36 @@
+# MiniCars Jetson TCP-to-UART Joystick Bridge Service
+#
+# This file is a template that lives in the repository.
+# To deploy:
+#   1. Copy this file to /etc/systemd/system/minicars-joystick.service on the Jetson
+#   2. Adjust User, Group, and paths as needed
+#   3. Run: sudo systemctl daemon-reload
+#   4. Run: sudo systemctl enable minicars-joystick.service
+#   5. Run: sudo systemctl start minicars-joystick.service
+#
+# See jetson/README.md for full deployment instructions.
+
+[Unit]
+Description=MiniCars Jetson TCP-to-UART joystick bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jetson-rod
+Group=jetson-rod
+WorkingDirectory=/home/jetson-rod/minicars-control-station/jetson
+Environment="MINICARS_BRIDGE_HOST=0.0.0.0"
+Environment="MINICARS_BRIDGE_PORT=5005"
+Environment="MINICARS_UART_DEVICE=/dev/ttyTHS1"
+Environment="MINICARS_UART_BAUD=115200"
+Environment="MINICARS_WATCHDOG_MS=150"
+Environment="MINICARS_LOG_LEVEL=INFO"
+Environment="MINICARS_SERVO_CENTER=90"
+ExecStart=/usr/bin/python3 /home/jetson-rod/minicars-control-station/jetson/tcp_uart_bridge.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
