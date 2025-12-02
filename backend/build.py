@@ -64,12 +64,13 @@ def build_backend():
     ]
     
     print("\nEjecutando PyInstaller...")
-    print(f"Entrypoint: main.py")
+    print(f"Usando: backend.spec")
     print(f"Output: dist/backend.exe")
     print()
     
+    # Usar el spec file es más confiable que argumentos en línea
     try:
-        PyInstaller.__main__.run(args)
+        PyInstaller.__main__.run(['backend.spec', '--noconfirm', '--clean'])
         
         print("\n" + "=" * 60)
         print("✓ Build completado exitosamente")
