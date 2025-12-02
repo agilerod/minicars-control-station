@@ -232,8 +232,8 @@ desktop/src-tauri/target/
 # PyInstaller - Backend build artifacts
 backend/dist/
 backend/build/
-backend/*.spec
-*.spec
+# backend/*.spec is tracked (needed for builds)
+# *.spec
 
 # Virtualenvs (duplicated intentionally for clarity)
 .venv/
