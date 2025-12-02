@@ -19,6 +19,11 @@ def build_backend():
     print("MiniCars Backend - PyInstaller Build")
     print("=" * 60)
     
+    # Verificar que estamos en el directorio correcto
+    if not Path('main.py').exists():
+        print("ERROR: main.py no encontrado. Ejecuta desde backend/")
+        sys.exit(1)
+    
     # Limpiar builds anteriores
     for folder in ['build', 'dist']:
         folder_path = Path(folder)
@@ -26,45 +31,36 @@ def build_backend():
             print(f"Limpiando {folder}/...")
             shutil.rmtree(folder_path)
     
-    # Configuración PyInstaller
+    # Verificar que config/ existe, si no, crear vacío
+    config_dir = Path('config')
+    if not config_dir.exists():
+        print("Creando config/ con control_profile.json por defecto...")
+        config_dir.mkdir(exist_ok=True)
+        # Crear control_profile.json mínimo
+        import json
+        default_profile = {"active_mode": "normal"}
+        (config_dir / 'control_profile.json').write_text(json.dumps(default_profile, indent=2))
+    
+    # Configuración PyInstaller - versión simplificada y robusta
     args = [
-        'main.py',  # Entrypoint
+        'main.py',
         '--name', 'backend',
-        '--onefile',  # Un solo ejecutable
+        '--onefile',
         '--noconfirm',
         '--clean',
+        '--console',  # Mantener console para logs
         
-        # Hidden imports necesarios para uvicorn
-        '--hidden-import', 'uvicorn',
-        '--hidden-import', 'uvicorn.logging',
-        '--hidden-import', 'uvicorn.loops',
-        '--hidden-import', 'uvicorn.loops.auto',
-        '--hidden-import', 'uvicorn.protocols',
-        '--hidden-import', 'uvicorn.protocols.http',
-        '--hidden-import', 'uvicorn.protocols.http.auto',
-        '--hidden-import', 'uvicorn.protocols.http.httptools_impl',
-        '--hidden-import', 'uvicorn.protocols.websockets',
-        '--hidden-import', 'uvicorn.protocols.websockets.auto',
-        '--hidden-import', 'uvicorn.lifespan',
-        '--hidden-import', 'uvicorn.lifespan.on',
+        # Collect all submodules automáticamente
+        '--collect-all', 'uvicorn',
+        '--collect-all', 'fastapi',
+        '--collect-all', 'pydantic',
+        '--collect-all', 'pydantic_settings',
         
-        # Hidden imports para FastAPI
-        '--hidden-import', 'fastapi',
-        '--hidden-import', 'pydantic',
-        '--hidden-import', 'pydantic_settings',
-        
-        # Hidden imports para pygame
+        # Hidden imports críticos
         '--hidden-import', 'pygame',
         
-        # Agregar datos necesarios (si existen)
-        # '--add-data', 'config;config',  # Descomentar si config/ es necesario
-        
-        # Mantener console para ver logs (cambiar a --noconsole si prefieres sin ventana)
-        '--console',
-        
-        # Optimizaciones
-        '--strip',  # Reducir tamaño
-        '--optimize', '2',  # Nivel de optimización Python
+        # Agregar config/
+        '--add-data', 'config' + (';config' if sys.platform == 'win32' else ':config'),
     ]
     
     print("\nEjecutando PyInstaller...")
