@@ -235,3 +235,47 @@ minicars-control-station/
 - `jetson/`: Scripts y configuración para el lado Jetson (streamer).
 - `docs/`: documentación adicional (por ejemplo, requisitos de build en Windows).
 - `scripts/`: utilidades como chequeos de entorno para Windows.
+
+---
+
+## Arquitectura de la Aplicación (Plan B)
+
+### Modo Desarrollo
+
+**Backend** (manual):
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+uvicorn minicars_backend.api:app --reload
+```
+
+**Desktop**:
+```powershell
+cd desktop
+npm run tauri:dev
+```
+
+La UI se conecta a `http://localhost:8000` donde asume que el backend está corriendo.
+
+### Modo Producción (Instalador)
+
+**Requisitos del usuario final**:
+- ✅ **Python 3.10+** instalado y en PATH
+- ✅ Dependencias del backend instaladas: `pip install -r backend/requirements.txt`
+- ✅ Carpeta `backend/` disponible junto al ejecutable o en `MINICARS_BACKEND_PATH`
+
+**Comportamiento**:
+1. Usuario abre "MiniCars Control Station"
+2. Tauri detecta modo producción
+3. Busca carpeta `backend/` en:
+   - Variable de entorno `MINICARS_BACKEND_PATH`
+   - Carpeta `backend/` junto al ejecutable
+   - Carpeta `../backend/` (instaladores)
+4. Ejecuta automáticamente:
+   ```bash
+   python -m uvicorn minicars_backend.api:app --host 127.0.0.1 --port 8000
+   ```
+5. La UI se conecta a `http://localhost:8000`
+6. Al cerrar la app, Tauri mata el proceso backend
+
+**Nota**: Este approach requiere Python instalado pero es más simple, mantenible y evita problemas de empaquetado con PyInstaller.

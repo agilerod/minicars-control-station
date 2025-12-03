@@ -3,94 +3,122 @@
     windows_subsystem = "windows"
 )]
 
-mod backend;
-
-use backend::BackendManager;
+use std::process::{Child, Command};
 use std::sync::Mutex;
+use std::path::{Path, PathBuf};
 use tauri::{Manager, State};
 
-struct AppState {
-    backend: Mutex<Option<BackendManager>>,
-}
+/// Estructura para gestionar el proceso del backend Python
+struct BackendProcess(Mutex<Option<Child>>);
 
-#[tauri::command]
-fn backend_status() -> Result<String, String> {
-    Ok("Backend managed by Tauri".to_string())
-}
-
-fn main() {
-    let mut backend_manager = BackendManager::new(8000);
-    
-    // En modo producción, buscar carpeta backend/ y lanzar con Python
-    #[cfg(not(debug_assertions))]
-    {
-        if let Some(backend_dir) = find_backend_dir() {
-            println!("[Tauri] Found backend directory at: {:?}", backend_dir);
-            
-            match backend_manager.start(&backend_dir.to_string_lossy()) {
-                Ok(_) => println!("[Tauri] Backend started successfully"),
-                Err(e) => {
-                    eprintln!("[Tauri] Failed to start backend: {}", e);
-                    eprintln!("[Tauri] Make sure Python 3.10+ is installed and in PATH");
-                    // Mostrar error al usuario (opcional)
-                }
-            }
-        } else {
-            eprintln!("[Tauri] backend/ directory not found in bundle!");
+/// Resuelve la ruta de la carpeta backend/
+fn resolve_backend_dir() -> Option<PathBuf> {
+    // Prioridad 1: Variable de entorno MINICARS_BACKEND_PATH
+    if let Ok(env_path) = std::env::var("MINICARS_BACKEND_PATH") {
+        let path = PathBuf::from(env_path);
+        if path.exists() && path.join("minicars_backend").exists() {
+            println!("[Tauri] Using backend from MINICARS_BACKEND_PATH: {:?}", path);
+            return Some(path);
         }
     }
     
-    // En modo desarrollo, asumir que backend corre externamente
-    #[cfg(debug_assertions)]
-    {
-        println!("[Tauri] Development mode - assuming backend running externally");
-        println!("[Tauri] Expected backend at: http://localhost:8000");
-    }
-    
-    tauri::Builder::default()
-        .manage(AppState {
-            backend: Mutex::new(Some(backend_manager)),
-        })
-        .invoke_handler(tauri::generate_handler![backend_status])
-        .on_window_event(|event| {
-            // Cleanup cuando se cierra la ventana
-            if let tauri::WindowEvent::Destroyed = event.event() {
-                println!("[Tauri] Window closing, cleaning up...");
+    // Prioridad 2: Carpeta backend/ al lado del ejecutable
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let backend_dir = exe_dir.join("backend");
+            if backend_dir.exists() && backend_dir.join("minicars_backend").exists() {
+                println!("[Tauri] Using backend from exe directory: {:?}", backend_dir);
+                return Some(backend_dir);
             }
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-}
-
-/// Busca el directorio backend/ en el bundle de Tauri (modo producción)
-#[cfg(not(debug_assertions))]
-fn find_backend_dir() -> Option<std::path::PathBuf> {
-    use std::path::PathBuf;
-    
-    // Obtener el directorio del ejecutable
-    let exe_dir = std::env::current_exe()
-        .ok()?
-        .parent()?
-        .to_path_buf();
-    
-    // Buscar backend/ en recursos o directorios relativos
-    let candidates = vec![
-        exe_dir.join("backend"),
-        exe_dir.join("resources").join("backend"),
-        exe_dir.join("..").join("backend"),
-        exe_dir.join("..").join("..").join("backend"),  // Para instaladores
-    ];
-    
-    for candidate in candidates {
-        if candidate.join("minicars_backend").exists() {
-            return Some(candidate);
+            
+            // Prioridad 3: ../backend (para estructura de dev/instalador)
+            let backend_dir_parent = exe_dir.parent().and_then(|p| Some(p.join("backend")));
+            if let Some(dir) = backend_dir_parent {
+                if dir.exists() && dir.join("minicars_backend").exists() {
+                    println!("[Tauri] Using backend from parent directory: {:?}", dir);
+                    return Some(dir);
+                }
+            }
         }
     }
     
     None
 }
 
-#[cfg(debug_assertions)]
-fn find_backend_dir() -> Option<std::path::PathBuf> {
-    None  // No buscar en desarrollo
+/// Inicia el backend usando Python + uvicorn
+fn start_backend(backend_dir: &Path) -> std::io::Result<Child> {
+    println!("[Tauri] Starting backend from: {:?}", backend_dir);
+    
+    Command::new("python")
+        .current_dir(backend_dir)
+        .args(&[
+            "-m",
+            "uvicorn",
+            "minicars_backend.api:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8000",
+        ])
+        .spawn()
+}
+
+fn main() {
+    let mut backend_child: Option<Child> = None;
+    
+    // Solo en modo producción, intentar lanzar el backend
+    #[cfg(not(debug_assertions))]
+    {
+        println!("[Tauri] Production mode - attempting to start backend...");
+        
+        match resolve_backend_dir() {
+            Some(backend_dir) => {
+                match start_backend(&backend_dir) {
+                    Ok(child) => {
+                        println!("[Tauri] Backend started successfully (PID: {:?})", child.id());
+                        backend_child = Some(child);
+                    }
+                    Err(e) => {
+                        eprintln!("[Tauri] ERROR: Failed to start backend: {}", e);
+                        eprintln!("[Tauri] Make sure Python 3.10+ is installed and in PATH.");
+                        eprintln!("[Tauri] The app will start but backend features won't work.");
+                    }
+                }
+            }
+            None => {
+                eprintln!("[Tauri] ERROR: backend/ directory not found!");
+                eprintln!("[Tauri] Searched in:");
+                eprintln!("[Tauri]   - MINICARS_BACKEND_PATH environment variable");
+                eprintln!("[Tauri]   - backend/ next to executable");
+                eprintln!("[Tauri]   - ../backend/ from executable");
+                eprintln!("[Tauri] The app will start but backend features won't work.");
+            }
+        }
+    }
+    
+    // En modo desarrollo, asumir backend externo
+    #[cfg(debug_assertions)]
+    {
+        println!("[Tauri] Development mode - assuming backend running externally at http://localhost:8000");
+    }
+    
+    tauri::Builder::default()
+        .manage(BackendProcess(Mutex::new(backend_child)))
+        .on_window_event(|event| {
+            // Cleanup cuando se cierra la ventana
+            if let tauri::WindowEvent::Destroyed = event.event() {
+                if let Some(state) = event.window().try_state::<BackendProcess>() {
+                    if let Ok(mut process) = state.0.lock() {
+                        if let Some(mut child) = process.take() {
+                            println!("[Tauri] Stopping backend process...");
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            println!("[Tauri] Backend stopped");
+                        }
+                    }
+                }
+            }
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
