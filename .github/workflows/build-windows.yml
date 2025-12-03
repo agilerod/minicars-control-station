@@ -29,6 +29,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
       
+      - name: Debug environment
+        run: |
+          python --version
+          pip list
+          Get-ChildItem -Recurse -Depth 2
+        shell: pwsh
+      
       - name: Build backend.exe
         run: python build.py
       
