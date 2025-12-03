@@ -15,16 +15,25 @@ impl BackendManager {
         }
     }
     
-    /// Inicia el backend.exe y espera a que esté listo
+    /// Inicia el backend usando Python + uvicorn directamente
     pub fn start(&mut self, backend_path: &str) -> Result<(), String> {
-        println!("[Backend] Starting from: {}", backend_path);
+        println!("[Backend] Starting Python backend from: {}", backend_path);
         
-        let child = Command::new(backend_path)
-            .env("MINICARS_BACKEND_PORT", self.port.to_string())
-            .env("MINICARS_BACKEND_HOST", "127.0.0.1")
+        // Lanzar: python -m uvicorn minicars_backend.api:app --host 127.0.0.1 --port 8000
+        let child = Command::new("python")
+            .args(&[
+                "-m",
+                "uvicorn",
+                "minicars_backend.api:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                &self.port.to_string(),
+            ])
+            .current_dir(backend_path)  // Working dir = backend/
             .env("MINICARS_ENV", "production")
             .spawn()
-            .map_err(|e| format!("Failed to spawn backend: {}", e))?;
+            .map_err(|e| format!("Failed to spawn backend: {}. Ensure Python is installed.", e))?;
         
         self.process = Some(child);
         

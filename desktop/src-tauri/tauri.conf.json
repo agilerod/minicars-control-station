@@ -15,7 +15,7 @@
       "icon": ["icons/icon.ico"],
       "targets": ["nsis", "msi"],
       "resources": [
-        "../../backend/dist/backend.exe"
+        "../../backend"
       ],
       "windows": {
         "webviewInstallMode": {

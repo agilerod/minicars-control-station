@@ -4,12 +4,16 @@ Dashboard local para controlar el stream de la Jetson Nano y el auto RC. Este re
 
 ## Prerrequisitos
 
-- Python 3.10+ (recomendado 3.11+)
+### Para Usuarios Finales (Windows)
+- **Python 3.10+** (recomendado 3.11+) - **REQUERIDO** para que la app funcione
+- GStreamer para Windows (instalado en `C:\Program Files\gstreamer\1.0\mingw_x86_64\bin\`)
+- Joystick/Volante USB (para control del vehículo)
+
+### Para Desarrolladores (adicional)
 - Node.js 18+ (npm o pnpm)
 - Git + OpenSSH Client
-- GStreamer para Windows (instalado en `C:\Program Files\gstreamer\1.0\mingw_x86_64\bin\`)
-- Rust stable con target `x86_64-pc-windows-msvc` (solo para Tauri)
-- Visual Studio Build Tools 2022 (workload C++ / Desktop development with C++) (solo para Tauri)
+- Rust stable con target `x86_64-pc-windows-msvc` (para compilar Tauri)
+- Visual Studio Build Tools 2022 (workload C++ / Desktop development with C++) (para compilar Tauri)
 
 Para más detalle sobre requisitos de build en Windows (MSVC, SDKs, etc.), consulta `docs/windows-build-requirements.md`.
 

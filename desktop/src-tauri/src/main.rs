@@ -21,21 +21,22 @@ fn backend_status() -> Result<String, String> {
 fn main() {
     let mut backend_manager = BackendManager::new(8000);
     
-    // En modo producción, buscar y lanzar backend.exe
+    // En modo producción, buscar carpeta backend/ y lanzar con Python
     #[cfg(not(debug_assertions))]
     {
-        if let Some(backend_exe) = find_backend_exe() {
-            println!("[Tauri] Found backend at: {:?}", backend_exe);
+        if let Some(backend_dir) = find_backend_dir() {
+            println!("[Tauri] Found backend directory at: {:?}", backend_dir);
             
-            match backend_manager.start(&backend_exe.to_string_lossy()) {
+            match backend_manager.start(&backend_dir.to_string_lossy()) {
                 Ok(_) => println!("[Tauri] Backend started successfully"),
                 Err(e) => {
                     eprintln!("[Tauri] Failed to start backend: {}", e);
+                    eprintln!("[Tauri] Make sure Python 3.10+ is installed and in PATH");
                     // Mostrar error al usuario (opcional)
                 }
             }
         } else {
-            eprintln!("[Tauri] backend.exe not found in bundle!");
+            eprintln!("[Tauri] backend/ directory not found in bundle!");
         }
     }
     
@@ -61,9 +62,9 @@ fn main() {
         .expect("error while running tauri application");
 }
 
-/// Busca backend.exe en el bundle de Tauri (modo producción)
+/// Busca el directorio backend/ en el bundle de Tauri (modo producción)
 #[cfg(not(debug_assertions))]
-fn find_backend_exe() -> Option<std::path::PathBuf> {
+fn find_backend_dir() -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
     
     // Obtener el directorio del ejecutable
@@ -72,15 +73,16 @@ fn find_backend_exe() -> Option<std::path::PathBuf> {
         .parent()?
         .to_path_buf();
     
-    // Buscar backend.exe en el mismo directorio o en resources
+    // Buscar backend/ en recursos o directorios relativos
     let candidates = vec![
-        exe_dir.join("backend.exe"),
-        exe_dir.join("resources").join("backend.exe"),
-        exe_dir.join("..").join("backend.exe"),
+        exe_dir.join("backend"),
+        exe_dir.join("resources").join("backend"),
+        exe_dir.join("..").join("backend"),
+        exe_dir.join("..").join("..").join("backend"),  // Para instaladores
     ];
     
     for candidate in candidates {
-        if candidate.exists() {
+        if candidate.join("minicars_backend").exists() {
             return Some(candidate);
         }
     }
@@ -89,6 +91,6 @@ fn find_backend_exe() -> Option<std::path::PathBuf> {
 }
 
 #[cfg(debug_assertions)]
-fn find_backend_exe() -> Option<std::path::PathBuf> {
+fn find_backend_dir() -> Option<std::path::PathBuf> {
     None  // No buscar en desarrollo
 }

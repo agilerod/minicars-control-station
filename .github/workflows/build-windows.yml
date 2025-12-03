@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-backend:
-    name: Build Backend (PyInstaller)
+  test-backend:
+    name: Test Backend (Python)
     runs-on: windows-latest
     defaults:
       run:
@@ -24,40 +24,33 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: backend/requirements-dev.txt
+          cache-dependency-path: backend/requirements.txt
       
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: pip install -r requirements.txt
       
-      - name: Debug environment
+      - name: Run backend tests
+        run: pytest
+        continue-on-error: true
+      
+      - name: Test backend can start
         run: |
-          python --version
-          pip list
-          Get-ChildItem -Recurse -Depth 2
-        shell: pwsh
-      
-      - name: Build backend.exe
-        run: python build.py
-      
-      - name: Test backend.exe
-        run: |
-          Start-Process -FilePath ".\dist\backend.exe" -NoNewWindow
+          Start-Job -ScriptBlock { python main.py }
           Start-Sleep -Seconds 5
-          $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing
-          Write-Host "Backend health check: $($response.StatusCode)"
-          Stop-Process -Name "backend" -Force
+          try {
+            $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing
+            Write-Host "✓ Backend health check OK: $($response.StatusCode)"
+          } catch {
+            Write-Error "✗ Backend failed to respond"
+            exit 1
+          } finally {
+            Stop-Process -Name "python" -Force -ErrorAction SilentlyContinue
+          }
         shell: pwsh
-      
-      - name: Upload backend.exe artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-exe-windows
-          path: backend/dist/backend.exe
-          retention-days: 30
   
   build-tauri:
     name: Build Tauri Desktop App
-    needs: build-backend
+    needs: test-backend
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -79,12 +72,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
-      
-      - name: Download backend.exe
-        uses: actions/download-artifact@v4
-        with:
-          name: backend-exe-windows
-          path: backend/dist
       
       - name: Install frontend dependencies
         run: |
