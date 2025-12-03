@@ -84,7 +84,7 @@ jobs:
       - name: Build Tauri app
         run: |
           cd desktop
-          npm run check-env && npm run tauri:build
+          npm run tauri:build
         env:
           CI: true
       

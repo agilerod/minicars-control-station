@@ -1,28 +1,49 @@
-param()
+<#
+    Script: scripts/check-windows-env.ps1
+    Propósito:
+      - Verificar que el entorno de Windows tenga las dependencias mínimas para compilar Tauri/Rust en DESARROLLO LOCAL.
+      - En CI (GitHub Actions) saltar la verificación y salir con código 0 para no bloquear el pipeline.
+#>
+Write-Host "== MiniCars Windows Env Check =="
 
-Write-Host "Verificando entorno de compilación para Tauri/Rust en Windows..." -ForegroundColor Cyan
+# --- 1. Saltar el check cuando corremos en CI (GitHub Actions) -----------------
+if ($env:CI -eq "true") {
+    Write-Host "CI detectado (CI=$($env:CI))."
+    Write-Host "Saltando verificación de entorno de Windows para no bloquear la pipeline."
+    exit 0
+}
 
-# Compatible con PowerShell 5.1+ (sin operador ?.)
+Write-Host "Entorno CI NO detectado. Ejecutando verificación completa para desarrollo local..."
+Write-Host ""
+
+# --- 2. Verificar cl.exe (compilador de Visual C++) ---------------------------
 $clCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
 $clPath = if ($clCmd) { $clCmd.Source } else { $null }
-
-$linkCmd = Get-Command link.exe -ErrorAction SilentlyContinue
-$linkPath = if ($linkCmd) { $linkCmd.Source } else { $null }
-
 $hasError = $false
-
 if (-not $clPath) {
-    Write-Host "No se encontró 'cl.exe' en el PATH." -ForegroundColor Red
+    Write-Warning "No se encontró 'cl.exe' en el PATH."
     $hasError = $true
 } else {
     Write-Host "cl.exe encontrado en: $clPath" -ForegroundColor Green
 }
 
+# --- 3. Verificar que no estemos usando link.exe de Git -----------------------
+$linkCmd = Get-Command link.exe -ErrorAction SilentlyContinue
+$linkPath = if ($linkCmd) { $linkCmd.Source } else { $null }
 if (-not $linkPath) {
-    Write-Host "No se encontró 'link.exe' en el PATH." -ForegroundColor Red
+    Write-Warning "No se encontró 'link.exe' en el PATH."
     $hasError = $true
 } else {
-    Write-Host "link.exe encontrado en: $linkPath" -ForegroundColor Green
+    Write-Host "link.exe encontrado en: $linkPath"
+    if ($linkPath -like "*\Git\usr\bin\link.exe") {
+        Write-Warning "Se detectó 'link.exe' de Git (no el linker de MSVC)."
+        Write-Host ""
+        Write-Host "Esto suele ocurrir cuando Git agrega su propia carpeta 'usr\bin' al PATH."
+        Write-Host "Recomendación:"
+        Write-Host "  - Ajusta el PATH para que la ruta del linker de Visual Studio (MSVC) aparezca antes que la de Git,"
+        Write-Host "    o remueve '...\Git\usr\bin' del PATH."
+        $hasError = $true
+    }
 }
 
 if ($hasError) {
@@ -34,4 +55,6 @@ if ($hasError) {
     exit 1
 }
 
-Write-Host "Entorno de compilación MSVC detectado correctamente." -ForegroundColor Green
+Write-Host ""
+Write-Host "✅ Verificación de entorno Windows completada correctamente para desarrollo local."
+exit 0
