@@ -16,6 +16,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.11", features = ["blocking"] }
 
+# Nota:
+# Tauri CLI compila con `--features custom-protocol` cuando usamos un protocolo
+# personalizado en tauri.conf.json. Esta feature debe existir aquí para evitar
+# errores de build en CI.
 [features]
 default = []
 custom-protocol = ["tauri/custom-protocol"]
