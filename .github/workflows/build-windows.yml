@@ -86,7 +86,7 @@ jobs:
         run: |
           cd desktop
           npm install
-          npx tauri build --bundles all
+          npx tauri build --bundles msi,nsis
         env:
           CI: true
       

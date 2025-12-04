@@ -13,7 +13,7 @@
     "bundle": {
       "identifier": "com.minicars.controlstation",
       "icon": ["icons/icon.ico"],
-      "targets": ["nsis", "msi"],
+      "targets": ["msi", "nsis"],
       "windows": {
         "webviewInstallMode": {
           "type": "embedBootstrapper"
