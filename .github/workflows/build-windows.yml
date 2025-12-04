@@ -80,15 +80,59 @@ jobs:
         run: |
           choco install wixtoolset --no-progress -y
           choco install nsis --no-progress -y
+          # Refresh environment variables so Chocolatey updates are loaded in the current shell
+          refreshenv
+          # Find makensis.exe in common locations
+          $nsisDirs = @(
+            'C:\Program Files (x86)\NSIS',
+            'C:\Program Files\NSIS'
+          )
+          $nsisFound = $false
+          foreach ($dir in $nsisDirs) {
+            if (Test-Path "$dir\makensis.exe") {
+              # Set MAKENSIS and update PATH once
+              $env:MAKENSIS = "$dir\makensis.exe"
+              $env:PATH += ";$dir"
+              $nsisFound = $true
+              break
+            }
+          }
+          if (-not $nsisFound) {
+            throw 'NSIS installation not found in expected directories.'
+          }
+          # Add WiX Toolset directories to PATH as before
+          $wixDirs = @(
+            'C:\Program Files (x86)\WiX Toolset v3.11\bin',
+            'C:\Program Files\WiX Toolset v3.11\bin'
+          )
+          foreach ($dir in $wixDirs) {
+            if (Test-Path $dir) {
+              $env:PATH += ";$dir"
+            }
+          }
         shell: pwsh
       
-      - name: Build Tauri app with all bundlers
+      - name: Build Tauri app
         run: |
           cd desktop
           npm install
+          Write-Host "MAKENSIS = $env:MAKENSIS"
+          Get-Command makensis -ErrorAction SilentlyContinue
           npx tauri build --bundles msi,nsis
         env:
           CI: true
+        shell: pwsh
+      
+      - name: List bundle contents
+        run: |
+          cd desktop
+          echo "Listing bundle root:"
+          dir src-tauri\target\release\bundle
+          echo "Listing NSIS:"
+          dir src-tauri\target\release\bundle\nsis
+          echo "Listing MSI:"
+          dir src-tauri\target\release\bundle\msi
+        shell: pwsh
       
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
