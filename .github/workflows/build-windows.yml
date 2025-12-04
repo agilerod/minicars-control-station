@@ -126,12 +126,46 @@ jobs:
       - name: List bundle contents
         run: |
           cd desktop
-          echo "Listing bundle root:"
-          dir src-tauri\target\release\bundle
-          echo "Listing NSIS:"
-          dir src-tauri\target\release\bundle\nsis
-          echo "Listing MSI:"
-          dir src-tauri\target\release\bundle\msi
+
+          echo "=== Checking src-tauri/target/release/bundle ==="
+          if (Test-Path "src-tauri\target\release\bundle") {
+            echo "Directory exists: src-tauri\target\release\bundle"
+            dir src-tauri\target\release\bundle
+            echo "NSIS:"
+            if (Test-Path "src-tauri\target\release\bundle\nsis") {
+              dir src-tauri\target\release\bundle\nsis
+            } else {
+              echo "NSIS directory not found under src-tauri\target\release\bundle"
+            }
+            echo "MSI:"
+            if (Test-Path "src-tauri\target\release\bundle\msi") {
+              dir src-tauri\target\release\bundle\msi
+            } else {
+              echo "MSI directory not found under src-tauri\target\release\bundle"
+            }
+          } else {
+            echo "src-tauri\\target\\release\\bundle does NOT exist"
+          }
+
+          echo "=== Checking target/release/bundle ==="
+          if (Test-Path "target\release\bundle") {
+            echo "Directory exists: target\release\bundle"
+            dir target\release\bundle
+            echo "NSIS:"
+            if (Test-Path "target\release\bundle\nsis") {
+              dir target\release\bundle\nsis
+            } else {
+              echo "NSIS directory not found under target\release\bundle"
+            }
+            echo "MSI:"
+            if (Test-Path "target\release\bundle\msi") {
+              dir target\release\bundle\msi
+            } else {
+              echo "MSI directory not found under target\release\bundle"
+            }
+          } else {
+            echo "target\\release\\bundle does NOT exist"
+          }
         shell: pwsh
       
       - name: Upload NSIS installer
