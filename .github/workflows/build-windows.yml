@@ -76,28 +76,30 @@ jobs:
         with:
           workspaces: desktop/src-tauri
       
-      - name: Install frontend dependencies
+      - name: Install WiX Toolset and NSIS
         run: |
-          cd desktop
-          npm ci
+          choco install wixtoolset --no-progress -y
+          choco install nsis --no-progress -y
+        shell: pwsh
       
-      - name: Build Tauri app
+      - name: Build Tauri app with all bundlers
         run: |
           cd desktop
-          npm run tauri:build:ci
+          npm install
+          npx tauri build --bundles all
         env:
           CI: true
       
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
         with:
-          name: minicars-installer-nsis
+          name: minicars-installer-nsis-windows
           path: desktop/src-tauri/target/release/bundle/nsis/*.exe
-          if-no-files-found: warn
+          if-no-files-found: error
       
       - name: Upload MSI installer
         uses: actions/upload-artifact@v4
         with:
-          name: minicars-installer-msi
+          name: minicars-installer-msi-windows
           path: desktop/src-tauri/target/release/bundle/msi/*.msi
-          if-no-files-found: warn
+          if-no-files-found: error
