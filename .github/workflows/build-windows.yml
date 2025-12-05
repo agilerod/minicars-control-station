@@ -123,13 +123,13 @@ jobs:
           CI: true
         shell: pwsh
       - run: |
-            Get-Location
-            cd desktop
-            Get-Location
-            echo -----
+            cd desktop/src-tauri/target
             ls
             echo -----
-            cd src-tauri
+            cd release
+            ls
+            echo -----
+            cd bundle
             ls
       - name: List bundle contents
         run: |
