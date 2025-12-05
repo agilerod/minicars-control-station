@@ -124,6 +124,8 @@ jobs:
         shell: pwsh
       - run: |
             Get-Location
+            cd backend
+            Get-Location
             echo -----
             Get-ChildItem -Force
       - name: List bundle contents
