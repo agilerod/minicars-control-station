@@ -122,7 +122,11 @@ jobs:
         env:
           CI: true
         shell: pwsh
-      
+      - run: |
+            pwd
+            echo -----
+            ls -la 
+            echo ------ 
       - name: List bundle contents
         run: |
           cd desktop
