@@ -124,10 +124,13 @@ jobs:
         shell: pwsh
       - run: |
             Get-Location
-            cd backend/minicars_backend
+            cd desktop
             Get-Location
             echo -----
-            Get-ChildItem -Force
+            ls
+            echo -----
+            cd src-tauri
+            ls
       - name: List bundle contents
         run: |
           cd desktop
