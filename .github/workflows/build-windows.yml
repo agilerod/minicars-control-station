@@ -129,7 +129,7 @@ jobs:
             cd release
             ls
             echo -----
-            cd bundle
+            cd build
             ls
       - name: List bundle contents
         run: |
