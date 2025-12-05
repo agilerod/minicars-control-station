@@ -76,9 +76,8 @@ jobs:
         with:
           workspaces: desktop/src-tauri
       
-      - name: Install WiX Toolset and NSIS
+      - name: Install NSIS
         run: |
-          choco install wixtoolset --no-progress -y
           choco install nsis --no-progress -y
           # Refresh environment variables so Chocolatey updates are loaded in the current shell
           refreshenv
@@ -100,92 +99,55 @@ jobs:
           if (-not $nsisFound) {
             throw 'NSIS installation not found in expected directories.'
           }
-          # Add WiX Toolset directories to PATH as before
-          $wixDirs = @(
-            'C:\Program Files (x86)\WiX Toolset v3.11\bin',
-            'C:\Program Files\WiX Toolset v3.11\bin'
-          )
-          foreach ($dir in $wixDirs) {
-            if (Test-Path $dir) {
-              $env:PATH += ";$dir"
-            }
-          }
         shell: pwsh
       
       - name: Build Tauri app
         run: |
           cd desktop
           npm install
-          Write-Host "MAKENSIS = $env:MAKENSIS"
-          Get-Command makensis -ErrorAction SilentlyContinue
-          npx tauri build --bundles msi,nsis
+          npm run tauri:build:nsis
         env:
           CI: true
         shell: pwsh
-      - run: |
-            cd desktop/src-tauri/target
-            ls
-            echo -----
-            cd release
-            ls
-            echo -----
-            cd build
-            ls
+      
+      - name: Debug Tauri output paths
+        shell: pwsh
+        run: |
+          Write-Host "=== Workspace ==="
+          pwd
+          Write-Host "=== List root ==="
+          ls
+          Write-Host "=== List desktop ==="
+          cd desktop
+          pwd
+          ls
+          Write-Host "=== List src-tauri ==="
+          ls src-tauri
+          Write-Host "=== List src-tauri/target (if exists) ==="
+          if (Test-Path "src-tauri/target") {
+            ls src-tauri/target
+            Write-Host "=== Recursively list src-tauri/target ==="
+            ls src-tauri/target -Recurse
+          } else {
+            Write-Host "src-tauri/target NO existe"
+          }
+      
       - name: List bundle contents
         run: |
           cd desktop
 
-          echo "=== Checking src-tauri/target/release/bundle ==="
-          if (Test-Path "src-tauri\target\release\bundle") {
-            echo "Directory exists: src-tauri\target\release\bundle"
-            dir src-tauri\target\release\bundle
-            echo "NSIS:"
-            if (Test-Path "src-tauri\target\release\bundle\nsis") {
-              dir src-tauri\target\release\bundle\nsis
-            } else {
-              echo "NSIS directory not found under src-tauri\target\release\bundle"
-            }
-            echo "MSI:"
-            if (Test-Path "src-tauri\target\release\bundle\msi") {
-              dir src-tauri\target\release\bundle\msi
-            } else {
-              echo "MSI directory not found under src-tauri\target\release\bundle"
-            }
+          echo "=== Checking src-tauri/target/release/bundle/nsis ==="
+          if (Test-Path "src-tauri\target\release\bundle\nsis") {
+            echo "NSIS directory exists: src-tauri\target\release\bundle\nsis"
+            dir src-tauri\target\release\bundle\nsis
           } else {
-            echo "src-tauri\\target\\release\\bundle does NOT exist"
-          }
-
-          echo "=== Checking target/release/bundle ==="
-          if (Test-Path "target\release\bundle") {
-            echo "Directory exists: target\release\bundle"
-            dir target\release\bundle
-            echo "NSIS:"
-            if (Test-Path "target\release\bundle\nsis") {
-              dir target\release\bundle\nsis
-            } else {
-              echo "NSIS directory not found under target\release\bundle"
-            }
-            echo "MSI:"
-            if (Test-Path "target\release\bundle\msi") {
-              dir target\release\bundle\msi
-            } else {
-              echo "MSI directory not found under target\release\bundle"
-            }
-          } else {
-            echo "target\\release\\bundle does NOT exist"
+            echo "NSIS directory NOT found: src-tauri\target\release\bundle\nsis"
           }
         shell: pwsh
       
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
         with:
-          name: minicars-installer-nsis-windows
-          path: desktop/src-tauri/target/release/*.exe
-          if-no-files-found: error
-      
-      - name: Upload MSI installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: minicars-installer-msi-windows
-          path: desktop/src-tauri/target/release/bundle/msi/*.msi
+          name: minicars-installer-windows-nsis
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error

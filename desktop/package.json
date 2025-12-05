@@ -12,7 +12,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "npm run check-env && tauri build",
     "tauri:build:ci": "tauri build",
-    "tauri": "tauri dev",
+    "tauri:build:nsis": "tauri build --bundles nsis",
     "check-env": "powershell -ExecutionPolicy Bypass -File ../scripts/check-windows-env.ps1"
   },
   "dependencies": {
