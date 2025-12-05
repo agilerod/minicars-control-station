@@ -123,10 +123,9 @@ jobs:
           CI: true
         shell: pwsh
       - run: |
-            pwd
+            Get-Location
             echo -----
-            ls -la 
-            echo ------ 
+            Get-ChildItem -Force
       - name: List bundle contents
         run: |
           cd desktop
