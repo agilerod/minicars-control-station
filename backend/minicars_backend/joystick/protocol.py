@@ -23,7 +23,7 @@ class JoystickMessage:
     
     def to_uart_format(self) -> str:
         """
-        Convert to UART format for Arduino.
+        Convert to UART format for Arduino (5-field legacy format).
         
         Returns:
             String in format: "servo_angle,accel_pct,brake_pct,hbrake_flag,turbo_flag\n"
@@ -38,6 +38,17 @@ class JoystickMessage:
         turbo_flag = 1 if self.turbo > 0.5 else 0
         
         return f"{servo_angle},{accel_pct},{brake_pct},{hbrake_flag},{turbo_flag}\n"
+    
+    def to_tcp_format(self) -> str:
+        """
+        Convert to TCP format for Jetson bridge (6-field format with normalized floats).
+        
+        This is the format expected by tcp_uart_bridge.py.
+        
+        Returns:
+            String in format: "servo,throttle,brake,handbrake,turbo,mode\n"
+        """
+        return f"{self.servo:.3f},{self.throttle:.3f},{self.brake:.3f},{self.handbrake:.3f},{self.turbo:.3f},{self.mode}\n"
 
 
 def format_message(msg: JoystickMessage) -> str:

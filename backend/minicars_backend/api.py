@@ -61,7 +61,12 @@ def actions_start_stream():
     """
     Endpoint para lanzar el viewer de GStreamer en la laptop.
     """
-    return start_stream()
+    result = start_stream()
+    
+    if result.get("status") in ["ok", "already_running"]:
+        return result
+    
+    raise HTTPException(status_code=500, detail=result)
 
 
 @app.post("/actions/stop_stream")

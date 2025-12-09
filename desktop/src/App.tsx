@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/tauri";
 import {
   getStatus,
-  startReceiver,
-  stopReceiver,
+  startStream,
+  stopStream,
   startCarControl,
   stopCarControl,
 } from "./api/client";
@@ -50,13 +51,42 @@ function App() {
   };
 
   useEffect(() => {
-    refreshStatus();
+    // Asegurar que el backend esté corriendo antes de hacer peticiones
+    const initializeBackend = async () => {
+      try {
+        await invoke("ensure_backend_running");
+        // Esperar un momento para que el backend esté listo
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // Ahora sí, refrescar el estado
+        await refreshStatus();
+      } catch (error) {
+        console.error("Failed to start backend", error);
+        
+        // Diferenciar tipos de error basándose en el prefijo del mensaje
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let userMessage: string;
+        
+        if (errorMessage.startsWith("PYTHON_NOT_FOUND")) {
+          userMessage = "Error: Python no está instalado o no está en PATH. Por favor instala Python 3.10+ y asegúrate de que esté disponible en la línea de comandos.";
+        } else if (errorMessage.startsWith("BACKEND_DIR_NOT_FOUND")) {
+          userMessage = "Error: No se encontró el directorio del backend. Revisa los logs para ver las rutas probadas.";
+        } else if (errorMessage.startsWith("SPAWN_FAILED")) {
+          userMessage = "Error: No se pudo iniciar el backend. Revisa los logs para más detalles.";
+        } else {
+          userMessage = `Error: No se pudo iniciar el backend. ${errorMessage}`;
+        }
+        
+        setMessage(userMessage);
+      }
+    };
+
+    initializeBackend();
   }, []);
 
   const handleAction = async (action: ActionName) => {
     const actionMap: Record<ActionName, () => Promise<unknown>> = {
-      start_stream: startReceiver,
-      stop_stream: stopReceiver,
+      start_stream: startStream,    // Calls /actions/start_stream endpoint
+      stop_stream: stopStream,      // Calls /actions/stop_stream endpoint
       start_car_control: startCarControl,
       stop_car_control: stopCarControl,
     };
@@ -65,8 +95,20 @@ function App() {
     setMessage(null);
 
     try {
-      await actionMap[action]();
-      setMessage("Éxito: acción ejecutada correctamente.");
+      const result = await actionMap[action]() as { status?: string; message?: string; details?: string };
+      
+      // Handle different status responses from backend
+      if (result?.status === "already_running") {
+        setMessage(`Info: ${result.message || "Ya estaba iniciado."}`);
+      } else if (result?.status === "ok") {
+        setMessage(`Éxito: ${result.message || "Acción ejecutada correctamente."}`);
+      } else if (result?.status === "error") {
+        setMessage(`Error: ${result.message || "No se pudo completar la acción."}`);
+      } else {
+        // Fallback for old format
+        setMessage("Éxito: acción ejecutada correctamente.");
+      }
+      
       await refreshStatus();
     } catch (error) {
       setMessage(

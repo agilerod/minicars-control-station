@@ -76,10 +76,28 @@ def stop_process(name: str) -> dict:
 def list_status() -> dict:
     """
     Devuelve el estado de cada proceso conocido (running/stopped).
+    
+    Para car_control, también verifica el JoystickSender global si está disponible.
     """
     status = {}
-    for name in ("stream", "car_control"):
-        status[name] = "running" if is_process_running(name) else "stopped"
+    
+    # Check stream process
+    status["stream"] = "running" if is_process_running("stream") else "stopped"
+    
+    # Check car_control: first check process registry, then check JoystickSender
+    car_control_running = is_process_running("car_control")
+    
+    # Also check JoystickSender if it exists
+    try:
+        from .commands import start_car_control
+        if start_car_control._joystick_sender is not None:
+            if start_car_control._joystick_sender._running:
+                car_control_running = True
+    except (ImportError, AttributeError):
+        pass
+    
+    status["car_control"] = "running" if car_control_running else "stopped"
+    
     return status
 
 

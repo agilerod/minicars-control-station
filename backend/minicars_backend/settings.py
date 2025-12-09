@@ -53,14 +53,18 @@ class Settings(BaseSettings):
     """
     
     # Joystick / Car Control settings
-    joystick_target_host: str = "SKLNx.local"
-    """Hostname o IP de la Jetson Nano para envío de comandos de joystick."""
+    joystick_target_host: str = "192.168.68.102"
+    """Hostname o IP de la Jetson Nano para envío de comandos de joystick.
+    Default: 192.168.68.102 (puede sobreescribirse con MINICARS_JOYSTICK_TARGET_HOST).
+    Si usas hostname como SKLNx.local, asegúrate de que resuelva correctamente."""
     
     joystick_target_port: int = 5005
     """Puerto TCP en la Jetson para el bridge TCP-UART."""
     
-    joystick_send_hz: int = 20
-    """Frecuencia de envío de comandos de joystick (Hz)."""
+    joystick_send_hz: int = 100
+    """Frecuencia de envío de comandos de joystick (Hz).
+    Default: 100Hz para mejor responsividad (coincide con car_control_logi.py).
+    Puede reducirse a 20Hz si hay problemas de red."""
     
     joystick_reconnect_delay: float = 2.0
     """Delay en segundos entre intentos de reconexión al bridge de Jetson."""

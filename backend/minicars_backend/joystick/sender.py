@@ -19,7 +19,8 @@ except ImportError:
     pygame = None  # type: ignore
 
 from .profiles import get_driving_profile, DrivingMode
-from .protocol import JoystickMessage, format_message
+from .protocol import JoystickMessage
+from .throttle_mapper import get_mode, map_pedal_to_throttle, percent_from_axis
 from ..control_profiles import load_profile
 
 logger = logging.getLogger("minicars.joystick.sender")
@@ -48,9 +49,8 @@ class JoystickSender:
         self._thread: Optional[threading.Thread] = None
         self._socket: Optional[socket.socket] = None
         
-        # State for delta limiting
-        self._last_throttle = 0.0
-        self._last_servo = 0.0
+        # State for throttle mapper (uses ramp rate internally)
+        self._throttle_state_key = f"sender_{id(self)}"
         
     def start(self) -> None:
         """Start the joystick sender thread."""
@@ -98,11 +98,26 @@ class JoystickSender:
         """
         try:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Set timeout for connection attempt
+            self._socket.settimeout(5.0)
             self._socket.connect((self.target_host, self.target_port))
+            # Remove timeout after connection (for blocking sends)
+            self._socket.settimeout(None)
             logger.info(f"[joystick-sender] Connected to {self.target_host}:{self.target_port}")
             return True
+        except socket.timeout:
+            logger.error(f"[joystick-sender] Connection timeout to {self.target_host}:{self.target_port}")
+            return False
+        except socket.gaierror as e:
+            logger.error(f"[joystick-sender] DNS resolution failed for {self.target_host}: {e}")
+            logger.error(f"[joystick-sender] Hint: Check if Jetson IP/hostname is correct. Try using IP address instead of hostname.")
+            return False
+        except ConnectionRefusedError:
+            logger.error(f"[joystick-sender] Connection refused by {self.target_host}:{self.target_port}")
+            logger.error(f"[joystick-sender] Hint: Ensure Jetson receiver is running and listening on port {self.target_port}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to connect to {self.target_host}:{self.target_port}: {e}")
+            logger.error(f"[joystick-sender] Failed to connect to {self.target_host}:{self.target_port}: {e}")
             return False
     
     def _send_failsafe(self) -> None:
@@ -120,7 +135,8 @@ class JoystickSender:
         )
         
         try:
-            self._socket.sendall(format_message(failsafe_msg).encode("ascii"))
+            # Use TCP format (6-field) that bridge expects
+            self._socket.sendall(failsafe_msg.to_tcp_format().encode("ascii"))
             logger.info("[joystick-sender] Sent failsafe message")
         except:
             pass
@@ -142,6 +158,7 @@ class JoystickSender:
         
         # Connect to Jetson
         if not self._connect():
+            logger.error("[joystick-sender] Failed to establish initial connection. Thread exiting.")
             self._running = False
             return
         
@@ -156,53 +173,61 @@ class JoystickSender:
             try:
                 pygame.event.pump()
                 
-                # Read joystick axes (adjust indices as needed for your controller)
-                servo_raw = joystick.get_axis(0)  # Steering
-                throttle_raw = joystick.get_axis(2)  # Accelerator (often -1=pressed, 1=released)
-                brake_raw = joystick.get_axis(3)  # Brake
+                # Read joystick axes - EXACT match with car_control_logi.py
+                # car_control_logi.py uses: AXIS_STEER=0, AXIS_ACCEL=1, AXIS_BRAKE=2, AXIS_HBRAKE=3
+                steer_raw = joystick.get_axis(0)  # Steering (axis 0)
+                accel_raw = joystick.get_axis(1)  # Accelerator (axis 1)
+                brake_raw = joystick.get_axis(2)  # Brake (axis 2)
+                hbrake_raw = joystick.get_axis(3)  # Handbrake (axis 3)
                 
-                # Normalize pedals: -1=pressed → 1.0, +1=released → 0.0
-                throttle_normalized = (-throttle_raw + 1.0) / 2.0
-                brake_normalized = (-brake_raw + 1.0) / 2.0
-                
-                # Handbrake button (adjust index as needed)
-                handbrake = 1.0 if joystick.get_button(5) else 0.0
-                
-                # Turbo toggle (adjust index as needed)
-                turbo_button = joystick.get_button(6)
-                if turbo_button and not prev_turbo_button:
+                # Turbo toggle - EXACT match with car_control_logi.py (BUTTON_TURBO=10)
+                turbo_pressed = joystick.get_button(10)
+                if turbo_pressed and not prev_turbo_button:
                     turbo_mode = not turbo_mode
                     logger.info(f"Turbo mode: {'ON' if turbo_mode else 'OFF'}")
-                prev_turbo_button = turbo_button
+                prev_turbo_button = turbo_pressed
                 
-                # Get active driving profile
+                # Get active driving mode
                 profile_data = load_profile()
                 active_mode = profile_data.get("active_mode", "normal")
-                profile = get_driving_profile(active_mode)
+                mode = get_mode(active_mode)
                 
-                # Apply profile curves and limits
-                throttle_curved = profile.apply_throttle_curve(throttle_normalized)
-                throttle_limited = profile.limit_throttle_delta(self._last_throttle, throttle_curved, dt)
+                # Servo conversion - EXACT match with car_control_logi.py
+                # servo_angle = int((steer_raw + 1) * 90)  # 0-180
+                # But we send normalized -1.0 to 1.0, so keep raw for now, then normalize
+                servo_normalized = steer_raw  # Already -1.0 to 1.0
                 
-                servo_limited_range = profile.apply_servo_limit(servo_raw)
-                servo_limited_delta = profile.limit_servo_delta(self._last_servo, servo_limited_range, dt)
+                # Throttle mapping - EXACT logic from car_control_logi.py
+                throttle = map_pedal_to_throttle(accel_raw, mode, self._throttle_state_key)
                 
-                # Update state
-                self._last_throttle = throttle_limited
-                self._last_servo = servo_limited_delta
+                # Apply turbo gain if enabled - EXACT match with car_control_logi.py
+                TURBO_GAIN = 1.30  # 30% más
+                if turbo_mode:
+                    throttle = min(1.0, throttle * TURBO_GAIN)
                 
-                # Create message
+                # Brake conversion - EXACT match with car_control_logi.py
+                # Uses percent_from_axis which applies (1 - axis_val) * 100
+                # But we need normalized 0.0 to 1.0
+                brake_pct = percent_from_axis(brake_raw)
+                brake_normalized = brake_pct / 100.0
+                
+                # Handbrake - EXACT match with car_control_logi.py
+                hbrake_pct = percent_from_axis(hbrake_raw)
+                handbrake = 1.0 if hbrake_pct > 0 else 0.0
+                
+                # Create message with normalized values
                 msg = JoystickMessage(
-                    servo=servo_limited_delta,
-                    throttle=throttle_limited,
+                    servo=servo_normalized,
+                    throttle=throttle,
                     brake=brake_normalized,
                     handbrake=handbrake,
                     turbo=1.0 if turbo_mode else 0.0,
                     mode=active_mode,
                 )
                 
-                # Send
-                self._socket.sendall(format_message(msg).encode("ascii"))
+                # Send using TCP format (6-field) that bridge expects
+                # Format: "servo,throttle,brake,handbrake,turbo,mode\n"
+                self._socket.sendall(msg.to_tcp_format().encode("ascii"))
                 
                 # Maintain frequency
                 now = time.perf_counter()

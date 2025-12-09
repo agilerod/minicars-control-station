@@ -11,6 +11,7 @@
   },
   "tauri": {
     "bundle": {
+      "active": true,
       "identifier": "com.minicars.controlstation",
       "icon": ["icons/icon.ico"],
       "targets": ["nsis"],

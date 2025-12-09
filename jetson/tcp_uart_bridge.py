@@ -71,46 +71,89 @@ def parse_message(line: str) -> Optional[JoystickMessage]:
     """
     Parse joystick message from TCP.
     
+    Supports two formats for backward compatibility:
+    - 6-field format (new): "servo,throttle,brake,handbrake,turbo,mode\n" (normalized floats)
+    - 5-field format (legacy): "servo_angle,accel_pct,brake_pct,hbrake_flag,turbo_flag\n" (integers)
+    
     Args:
         line: Raw line from TCP socket
-        
+    
     Returns:
         Parsed JoystickMessage or None if invalid
     """
     try:
         parts = line.strip().split(',')
-        if len(parts) != 6:
-            return None
         
-        servo = float(parts[0])
-        throttle = float(parts[1])
-        brake = float(parts[2])
-        handbrake = float(parts[3])
-        turbo = float(parts[4])
-        mode = parts[5]
-        
-        # Validate ranges
-        if not (-1.0 <= servo <= 1.0):
+        if len(parts) == 6:
+            # New 6-field format: normalized floats with mode
+            servo = float(parts[0])
+            throttle = float(parts[1])
+            brake = float(parts[2])
+            handbrake = float(parts[3])
+            turbo = float(parts[4])
+            mode = parts[5]
+            
+            # Validate ranges
+            if not (-1.0 <= servo <= 1.0):
+                return None
+            if not (0.0 <= throttle <= 1.0):
+                return None
+            if not (0.0 <= brake <= 1.0):
+                return None
+            if not (0.0 <= handbrake <= 1.0):
+                return None
+            if not (0.0 <= turbo <= 1.0):
+                return None
+            if mode not in ["kid", "normal", "sport"]:
+                return None
+            
+            return JoystickMessage(
+                servo=servo,
+                throttle=throttle,
+                brake=brake,
+                handbrake=handbrake,
+                turbo=turbo,
+                mode=mode,
+            )
+        elif len(parts) == 5:
+            # Legacy 5-field format: integers (from car_control_logi.py)
+            # Format: servo_angle,accel_pct,brake_pct,hbrake_flag,turbo_flag
+            servo_angle = int(parts[0])  # 0-180
+            accel_pct = int(parts[1])  # 0-100
+            brake_pct = int(parts[2])  # 0-100
+            hbrake_flag = int(parts[3])  # 0 or 1
+            turbo_flag = int(parts[4])  # 0 or 1
+            
+            # Validate ranges
+            if not (0 <= servo_angle <= 180):
+                return None
+            if not (0 <= accel_pct <= 100):
+                return None
+            if not (0 <= brake_pct <= 100):
+                return None
+            if hbrake_flag not in [0, 1]:
+                return None
+            if turbo_flag not in [0, 1]:
+                return None
+            
+            # Convert to normalized format
+            servo = (servo_angle / 90.0) - 1.0  # 0-180 → -1.0 to 1.0
+            throttle = accel_pct / 100.0  # 0-100 → 0.0 to 1.0
+            brake = brake_pct / 100.0  # 0-100 → 0.0 to 1.0
+            handbrake = float(hbrake_flag)
+            turbo = float(turbo_flag)
+            mode = "normal"  # Default mode for legacy format
+            
+            return JoystickMessage(
+                servo=servo,
+                throttle=throttle,
+                brake=brake,
+                handbrake=handbrake,
+                turbo=turbo,
+                mode=mode,
+            )
+        else:
             return None
-        if not (0.0 <= throttle <= 1.0):
-            return None
-        if not (0.0 <= brake <= 1.0):
-            return None
-        if not (0.0 <= handbrake <= 1.0):
-            return None
-        if not (0.0 <= turbo <= 1.0):
-            return None
-        if mode not in ["kid", "normal", "sport"]:
-            return None
-        
-        return JoystickMessage(
-            servo=servo,
-            throttle=throttle,
-            brake=brake,
-            handbrake=handbrake,
-            turbo=turbo,
-            mode=mode,
-        )
     except (ValueError, IndexError):
         return None
 

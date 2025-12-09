@@ -8,11 +8,16 @@
 #   4. Run: sudo systemctl enable minicars-streamer.service
 #   5. Run: sudo systemctl start minicars-streamer.service
 #
-# See jetson/README.md for full deployment instructions.
+# NOTE: This service now uses stream_supervisor.py which monitors connectivity
+# and manages the GStreamer pipeline. The old start_streamer.py logic has been
+# integrated into the supervisor for better reliability and configurability.
+#
+# See docs/STREAMING_JETSON_AUTOSTART.md for full deployment instructions.
 
 [Unit]
-Description=MiniCars Jetson GStreamer sender
+Description=MiniCars Jetson GStreamer sender (supervised)
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -20,9 +25,14 @@ Type=simple
 User=jetson-rod
 Group=jetson-rod
 WorkingDirectory=/home/jetson-rod/minicars-control-station/jetson
-ExecStart=/usr/bin/python3 /home/jetson-rod/minicars-control-station/jetson/start_streamer.py
-Restart=on-failure
-RestartSec=5
+ExecStart=/usr/bin/python3 /home/jetson-rod/minicars-control-station/jetson/stream_supervisor.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
 
 [Install]
 WantedBy=multi-user.target

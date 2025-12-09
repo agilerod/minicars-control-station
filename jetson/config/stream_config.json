@@ -1,0 +1,14 @@
+{
+  "control_station_host": "SKLNx.local",
+  "video_port": 5000,
+  "camera_device": "nvarguscamerasrc",
+  "ssid": null,
+  "resolution": {
+    "width": 1280,
+    "height": 720
+  },
+  "framerate": 30,
+  "bitrate": 8000000,
+  "flip_method": 2
+}
+

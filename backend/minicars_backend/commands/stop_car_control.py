@@ -26,21 +26,24 @@ def stop_car_control() -> dict:
         }
     
     try:
+        logger.info("[CAR CONTROL] Stopping joystick sender...")
         start_car_control._joystick_sender.stop()
         start_car_control._joystick_sender = None
         
-        logger.info("Joystick sender stopped")
+        logger.info("[CAR CONTROL] Joystick sender stopped successfully")
         return {
             "status": "ok",
             "message": "Joystick sender stopped",
+            "details": "Car control stopped and failsafe message sent",
         }
     except Exception as e:
-        logger.error(f"Failed to stop joystick sender: {e}", exc_info=True)
+        logger.error(f"[CAR CONTROL] Failed to stop joystick sender: {e}", exc_info=True)
         # Try to cleanup anyway
         start_car_control._joystick_sender = None
         return {
             "status": "error",
             "message": f"Failed to stop: {str(e)}",
+            "details": "Car control may still be running. Check logs for details.",
         }
 
 
