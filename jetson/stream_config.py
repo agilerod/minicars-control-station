@@ -6,21 +6,41 @@ Loads and validates streaming configuration from stream_config.json.
 """
 import json
 import logging
-from dataclasses import dataclass
+import sys
 from pathlib import Path
 from typing import Optional
 
+# Verify Python version (need at least 3.6)
+if sys.version_info < (3, 6):
+    print(f"[STREAM-CONFIG] ERROR: Python 3.6+ required, found {sys.version_info.major}.{sys.version_info.minor}")
+    sys.exit(1)
+
 logger = logging.getLogger(__name__)
 
+# Python 3.7+ has dataclasses, but Jetson may have Python 3.6
+# Use a fallback for compatibility
+try:
+    from dataclasses import dataclass
+    _HAS_DATACLASS = True
+except ImportError:
+    _HAS_DATACLASS = False
+    # Fallback: simple class without dataclass decorator
+    def dataclass(cls):
+        """No-op decorator for Python < 3.7."""
+        return cls
 
-@dataclass
+
 class ResolutionConfig:
     """Video resolution configuration."""
-    width: int
-    height: int
+    def __init__(self, width: int, height: int):
+        self.width = width
+        self.height = height
+    
+    def __repr__(self):
+        return f"ResolutionConfig(width={self.width}, height={self.height})"
 
 
-@dataclass
+@dataclass if _HAS_DATACLASS else lambda x: x
 class StreamConfig:
     """
     Streaming configuration for Jetson camera.
@@ -135,7 +155,11 @@ def load_config() -> StreamConfig:
             f"[STREAM-CONFIG] Invalid 'resolution.height': {height}"
         )
     
-    resolution = ResolutionConfig(width=width, height=height)
+    # Create ResolutionConfig (works with or without dataclass)
+    if _HAS_DATACLASS:
+        resolution = ResolutionConfig(width=width, height=height)
+    else:
+        resolution = ResolutionConfig(width=width, height=height)
     
     # Parse framerate
     framerate = data.get("framerate", 30)
@@ -166,17 +190,32 @@ def load_config() -> StreamConfig:
     logger.info(f"[STREAM-CONFIG] Loaded config from {config_path}")
     logger.info(f"[STREAM-CONFIG] Host: {data['control_station_host']}, Video Port: {video_port}, Backend Port: {backend_port}")
     
-    return StreamConfig(
-        control_station_host=data["control_station_host"],
-        video_port=video_port,
-        backend_port=backend_port,
-        camera_device=data["camera_device"],
-        ssid=ssid,
-        resolution=resolution,
-        framerate=framerate,
-        bitrate=bitrate,
-        flip_method=flip_method,
-    )
+    # Create StreamConfig (works with or without dataclass)
+    if _HAS_DATACLASS:
+        return StreamConfig(
+            control_station_host=data["control_station_host"],
+            video_port=video_port,
+            backend_port=backend_port,
+            camera_device=data["camera_device"],
+            ssid=ssid,
+            resolution=resolution,
+            framerate=framerate,
+            bitrate=bitrate,
+            flip_method=flip_method,
+        )
+    else:
+        # Manual initialization for Python < 3.7
+        config = StreamConfig.__new__(StreamConfig)
+        config.control_station_host = data["control_station_host"]
+        config.video_port = video_port
+        config.backend_port = backend_port
+        config.camera_device = data["camera_device"]
+        config.ssid = ssid
+        config.resolution = resolution
+        config.framerate = framerate
+        config.bitrate = bitrate
+        config.flip_method = flip_method
+        return config
 
 
 def validate_config() -> None:

@@ -236,57 +236,51 @@ def start_pipeline(config: StreamConfig) -> bool:
         )
         
         # Give it a moment to start and check for immediate failures
-        time.sleep(1.0)  # Increased wait time to catch initialization errors
+        time.sleep(1.5)  # Wait a bit longer to catch initialization errors
         
         # Check if it's still running
         poll_result = _pipeline_proc.poll()
         if poll_result is not None:
             # Process died immediately - read stderr for diagnostics
             stderr_output = ""
+            stdout_output = ""
             try:
-                if _pipeline_proc.stderr:
-                    # Read available stderr (non-blocking)
-                    import select
-                    import fcntl
-                    
-                    # Try to read what's available
-                    stderr_lines = []
+                # Use communicate() with timeout to get all output
+                try:
+                    stdout_bytes, stderr_bytes = _pipeline_proc.communicate(timeout=2.0)
+                    if stderr_bytes:
+                        stderr_output = stderr_bytes.decode('utf-8', errors='replace').strip()
+                    if stdout_bytes:
+                        stdout_output = stdout_bytes.decode('utf-8', errors='replace').strip()
+                except subprocess.TimeoutExpired:
+                    # Process is still running? That's unexpected if poll() returned non-None
+                    # Try to kill it and read what we can
+                    _pipeline_proc.kill()
                     try:
-                        # Set stderr to non-blocking
-                        flags = fcntl.fcntl(_pipeline_proc.stderr.fileno(), fcntl.F_GETFL)
-                        fcntl.fcntl(_pipeline_proc.stderr.fileno(), fcntl.F_SETFL, flags | os.O_NONBLOCK)
-                        
-                        # Read available lines
-                        while True:
-                            line = _pipeline_proc.stderr.readline()
-                            if not line:
-                                break
-                            stderr_lines.append(line.strip())
-                            if len(stderr_lines) >= 20:  # Limit to 20 lines
-                                break
-                    except (OSError, AttributeError):
-                        # Fallback: try reading anyway
-                        try:
-                            for _ in range(20):
-                                line = _pipeline_proc.stderr.readline()
-                                if not line:
-                                    break
-                                stderr_lines.append(line.strip())
-                        except:
-                            pass
-                    
-                    stderr_output = '\n'.join(stderr_lines) if stderr_lines else "No stderr output captured"
-                else:
-                    stderr_output = "No stderr pipe available"
+                        stdout_bytes, stderr_bytes = _pipeline_proc.communicate(timeout=1.0)
+                        if stderr_bytes:
+                            stderr_output = stderr_bytes.decode('utf-8', errors='replace').strip()
+                        if stdout_bytes:
+                            stdout_output = stdout_bytes.decode('utf-8', errors='replace').strip()
+                    except:
+                        pass
             except Exception as e:
                 stderr_output = f"Could not read stderr: {e}"
             
             logger.error(f"Pipeline failed to start (exit code: {poll_result})")
-            if stderr_output and stderr_output != "No stderr output captured":
-                logger.error(f"GStreamer error output:\n{stderr_output}")
-            else:
-                logger.error("No error output captured. Pipeline may have failed during initialization.")
-                logger.error("Common causes: camera device busy, nvargus-daemon issues, or permission problems.")
+            if stderr_output:
+                # Log stderr (most important for GStreamer errors)
+                logger.error(f"GStreamer stderr:\n{stderr_output}")
+            if stdout_output:
+                # Log stdout (may contain useful info)
+                logger.error(f"GStreamer stdout:\n{stdout_output}")
+            if not stderr_output and not stdout_output:
+                logger.error("No output captured. Pipeline may have failed during initialization.")
+                logger.error("Common causes:")
+                logger.error("  - Camera device busy (another process using it)")
+                logger.error("  - nvargus-daemon not running or needs restart")
+                logger.error("  - Permission problems")
+                logger.error("  - Invalid GStreamer pipeline syntax")
             _pipeline_proc = None
             return False
         
