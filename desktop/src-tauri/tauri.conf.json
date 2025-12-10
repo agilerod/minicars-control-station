@@ -15,6 +15,9 @@
       "identifier": "com.minicars.controlstation",
       "icon": ["icons/icon.ico"],
       "targets": ["nsis"],
+      "resources": [
+        "../../backend"
+      ],
       "windows": {
         "webviewInstallMode": {
           "type": "embedBootstrapper"

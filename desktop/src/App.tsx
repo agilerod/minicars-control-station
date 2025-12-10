@@ -60,19 +60,23 @@ function App() {
         // Ahora sí, refrescar el estado
         await refreshStatus();
       } catch (error) {
-        console.error("Failed to start backend", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        // Log detallado en consola para debugging (desarrollo)
+        console.error("[App] Failed to start backend:", error);
+        console.error("[App] Error details:", errorMessage);
         
         // Diferenciar tipos de error basándose en el prefijo del mensaje
-        const errorMessage = error instanceof Error ? error.message : String(error);
         let userMessage: string;
         
-        if (errorMessage.startsWith("PYTHON_NOT_FOUND")) {
+        if (errorMessage.includes("PYTHON_NOT_FOUND") || errorMessage.includes("Python interpreter not found")) {
           userMessage = "Error: Python no está instalado o no está en PATH. Por favor instala Python 3.10+ y asegúrate de que esté disponible en la línea de comandos.";
-        } else if (errorMessage.startsWith("BACKEND_DIR_NOT_FOUND")) {
-          userMessage = "Error: No se encontró el directorio del backend. Revisa los logs para ver las rutas probadas.";
-        } else if (errorMessage.startsWith("SPAWN_FAILED")) {
-          userMessage = "Error: No se pudo iniciar el backend. Revisa los logs para más detalles.";
+        } else if (errorMessage.includes("BACKEND_DIR_NOT_FOUND") || errorMessage.includes("Backend folder not found")) {
+          userMessage = "Error: No se encontró el directorio del backend. Revisa los logs de la consola para ver las rutas probadas.";
+        } else if (errorMessage.includes("SPAWN_FAILED") || errorMessage.includes("Failed to start backend")) {
+          userMessage = "Error: No se pudo iniciar el backend. Revisa los logs de la consola para más detalles.";
         } else {
+          // Mostrar el mensaje de error tal cual si contiene información útil
           userMessage = `Error: No se pudo iniciar el backend. ${errorMessage}`;
         }
         

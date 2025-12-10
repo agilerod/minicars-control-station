@@ -7,7 +7,7 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::path::{Path, PathBuf};
 use std::io::ErrorKind;
-use tauri::{Manager, State, WindowEvent};
+use tauri::{AppHandle, Manager, State, WindowEvent};
 
 /// Estructura para gestionar el proceso del backend Python
 /// 
@@ -28,7 +28,7 @@ impl std::fmt::Display for BackendError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BackendError::PythonNotFound => {
-                write!(f, "PYTHON_NOT_FOUND: Python not found. Please install Python 3.10+ and ensure it's in PATH.")
+                write!(f, "PYTHON_NOT_FOUND: Python interpreter not found (tried 'python' and 'py'). Please install Python 3.10+ and ensure it's in PATH.")
             }
             BackendError::BackendDirNotFound { tried } => {
                 write!(f, "BACKEND_DIR_NOT_FOUND: Backend directory not found. Tried paths: {:?}", tried)
@@ -45,17 +45,18 @@ fn is_dev_mode() -> bool {
     cfg!(debug_assertions)
 }
 
-/// Resuelve la ruta de la carpeta backend/
+/// Resuelve la ruta de la carpeta backend/ usando el orden de prioridades especificado.
 /// 
-/// En modo desarrollo:
-/// 1. Variable de entorno MINICARS_BACKEND_PATH
-/// 2. Workspace root calculado desde CARGO_MANIFEST_DIR (../backend desde desktop/src-tauri)
+/// Prioridad 1: Variable de entorno MINICARS_BACKEND_PATH (modo avanzado/debugging)
+/// Prioridad 2: Recursos empaquetados de Tauri (modo producción) via path_resolver
+/// Prioridad 3: Rutas de desarrollo (solo en modo desarrollo)
 /// 
-/// En modo producción:
-/// 1. Variable de entorno MINICARS_BACKEND_PATH
-/// 2. Carpeta backend/ al lado del ejecutable
-/// 3. Carpeta ../backend/ desde el ejecutable
-fn resolve_backend_dir() -> Result<PathBuf, BackendError> {
+/// Args:
+///   app: AppHandle de Tauri para acceder a path_resolver
+/// 
+/// Returns:
+///   PathBuf del directorio backend/ o BackendError
+fn resolve_backend_dir(app: &AppHandle) -> Result<PathBuf, BackendError> {
     let mut tried_paths = Vec::new();
     let is_dev = is_dev_mode();
     
@@ -65,31 +66,41 @@ fn resolve_backend_dir() -> Result<PathBuf, BackendError> {
         println!("[Tauri] Production mode detected");
     }
     
-    // Prioridad 1: Variable de entorno MINICARS_BACKEND_PATH (tanto dev como prod)
+    // Prioridad 1: Variable de entorno MINICARS_BACKEND_PATH
     if let Ok(env_path) = std::env::var("MINICARS_BACKEND_PATH") {
         let path = PathBuf::from(env_path);
         tried_paths.push(path.clone());
-        if path.exists() && path.join("main.py").exists() {
+        if path.exists() && path.is_dir() && path.join("main.py").exists() {
             println!("[Tauri] Using backend from MINICARS_BACKEND_PATH: {:?}", path);
             return Ok(path);
         }
     }
     
+    // Prioridad 2: Recursos empaquetados de Tauri (modo producción)
+    if let Some(resource_path) = app.path_resolver().resolve_resource("backend") {
+        tried_paths.push(resource_path.clone());
+        if resource_path.exists() && resource_path.is_dir() && resource_path.join("main.py").exists() {
+            println!("[Tauri] Using backend from Tauri resources: {:?}", resource_path);
+            return Ok(resource_path);
+        }
+    }
+    
+    // Prioridad 3: Rutas de desarrollo (solo en modo desarrollo)
     if is_dev {
-        // En desarrollo: usar CARGO_MANIFEST_DIR para encontrar el workspace root
+        // Intento 1: Workspace root desde CARGO_MANIFEST_DIR
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         // manifest_dir = desktop/src-tauri
         // workspace_root = desktop/src-tauri/../.. = minicars-control-station/
         if let Some(workspace_root) = manifest_dir.parent().and_then(|p| p.parent()) {
             let dev_backend = workspace_root.join("backend");
             tried_paths.push(dev_backend.clone());
-            if dev_backend.exists() && dev_backend.join("main.py").exists() {
+            if dev_backend.exists() && dev_backend.is_dir() && dev_backend.join("main.py").exists() {
                 println!("[Tauri] Using backend from workspace root (dev): {:?}", dev_backend);
                 return Ok(dev_backend);
             }
         }
         
-        // Fallback: intentar desde current_dir (por si acaso)
+        // Intento 2: Desde current_dir
         if let Ok(current_dir) = std::env::current_dir() {
             let backend_dir = if current_dir.ends_with("desktop") {
                 current_dir.parent().map(|p| p.join("backend"))
@@ -99,32 +110,9 @@ fn resolve_backend_dir() -> Result<PathBuf, BackendError> {
             
             if let Some(dir) = backend_dir {
                 tried_paths.push(dir.clone());
-                if dir.exists() && dir.join("main.py").exists() {
+                if dir.exists() && dir.is_dir() && dir.join("main.py").exists() {
                     println!("[Tauri] Using backend from current_dir (dev fallback): {:?}", dir);
                     return Ok(dir);
-                }
-            }
-        }
-    } else {
-        // En producción: buscar junto al ejecutable
-        if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
-                // Prioridad 2: backend/ al lado del ejecutable
-                let backend_dir = exe_dir.join("backend");
-                tried_paths.push(backend_dir.clone());
-                if backend_dir.exists() && backend_dir.join("main.py").exists() {
-                    println!("[Tauri] Using backend from exe directory: {:?}", backend_dir);
-                    return Ok(backend_dir);
-                }
-                
-                // Prioridad 3: ../backend desde el ejecutable
-                if let Some(parent_dir) = exe_dir.parent() {
-                    let backend_dir = parent_dir.join("backend");
-                    tried_paths.push(backend_dir.clone());
-                    if backend_dir.exists() && backend_dir.join("main.py").exists() {
-                        println!("[Tauri] Using backend from parent directory: {:?}", backend_dir);
-                        return Ok(backend_dir);
-                    }
                 }
             }
         }
@@ -172,26 +160,49 @@ fn find_python_command() -> Result<String, BackendError> {
 
 /// Inicia el backend usando Python + uvicorn
 /// 
-/// Ejecuta: python -m uvicorn main:app --host 127.0.0.1 --port 8000
+/// Ejecuta: python -m uvicorn main:app --host 0.0.0.0 --port 8000
+/// (0.0.0.0 permite acceso desde la red, necesario para que Jetson se conecte)
+/// 
+/// Args:
+///   backend_dir: Directorio del backend (debe contener main.py)
+///   python_cmd: Comando Python a usar ("python" o "py")
+/// 
+/// Returns:
+///   Child process del backend o BackendError con detalles completos
 fn start_backend(backend_dir: &Path, python_cmd: &str) -> Result<Child, BackendError> {
-    println!("[Tauri] Starting backend from: {:?} using {}", backend_dir, python_cmd);
+    // Use 0.0.0.0 to listen on all interfaces, making it accessible from network (Jetson)
+    let cmd_str = format!("{} -m uvicorn main:app --host 0.0.0.0 --port 8000", python_cmd);
     
-    let cmd_str = format!("{} -m uvicorn main:app --host 127.0.0.1 --port 8000", python_cmd);
+    println!("[Tauri] Starting backend:");
+    println!("  Backend path: {:?}", backend_dir);
+    println!("  Command: {}", cmd_str);
     
-    Command::new(python_cmd)
+    match Command::new(python_cmd)
         .current_dir(backend_dir)
         .arg("-m")
         .arg("uvicorn")
         .arg("main:app")
         .arg("--host")
-        .arg("127.0.0.1")
+        .arg("0.0.0.0")
         .arg("--port")
         .arg("8000")
         .spawn()
-        .map_err(|e| BackendError::SpawnFailed {
-            source: e,
-            cmd: cmd_str,
-        })
+    {
+        Ok(child) => {
+            println!("[Tauri] Backend process started successfully (PID: {:?})", child.id());
+            Ok(child)
+        }
+        Err(e) => {
+            eprintln!("[Tauri] Failed to spawn backend process:");
+            eprintln!("  Backend path: {:?}", backend_dir);
+            eprintln!("  Command: {}", cmd_str);
+            eprintln!("  Error: {} (kind: {:?})", e, e.kind());
+            Err(BackendError::SpawnFailed {
+                source: e,
+                cmd: cmd_str,
+            })
+        }
+    }
 }
 
 /// Comando Tauri para asegurar que el backend esté corriendo
@@ -202,8 +213,13 @@ fn start_backend(backend_dir: &Path, python_cmd: &str) -> Result<Child, BackendE
 /// Retorna un string con formato "ERROR_CODE: mensaje" para que el frontend pueda
 /// diferenciar entre tipos de error.
 #[tauri::command]
-async fn ensure_backend_running(state: State<'_, BackendProcess>) -> Result<(), String> {
-    let mut process_guard = state.0.lock().map_err(|e| format!("LOCK_ERROR: Failed to lock backend state: {}", e))?;
+async fn ensure_backend_running(
+    app: AppHandle,
+    state: State<'_, BackendProcess>
+) -> Result<(), String> {
+    let mut process_guard = state.0.lock().map_err(|e| {
+        format!("LOCK_ERROR: Failed to lock backend state: {}", e)
+    })?;
     
     // Verificar si el proceso ya está corriendo
     if let Some(ref mut child) = *process_guard {
@@ -215,7 +231,11 @@ async fn ensure_backend_running(state: State<'_, BackendProcess>) -> Result<(), 
             }
             Ok(Some(status)) => {
                 // Proceso terminó
-                println!("[Tauri] Backend process exited with status: {:?}", status);
+                if let Some(code) = status.code() {
+                    println!("[Tauri] Backend process exited with code: {}", code);
+                } else {
+                    println!("[Tauri] Backend process exited (no exit code available)");
+                }
                 *process_guard = None;
             }
             Err(e) => {
@@ -227,13 +247,14 @@ async fn ensure_backend_running(state: State<'_, BackendProcess>) -> Result<(), 
     }
     
     // Necesitamos iniciar el backend
-    let backend_dir = resolve_backend_dir().map_err(|e| {
-        eprintln!("[Tauri] ERROR: {}", e);
+    // Resolver ruta usando AppHandle para acceder a path_resolver
+    let backend_dir = resolve_backend_dir(&app).map_err(|e| {
+        eprintln!("[Tauri] ERROR resolving backend directory: {}", e);
         e.to_string()
     })?;
     
     let python_cmd = find_python_command().map_err(|e| {
-        eprintln!("[Tauri] ERROR: {}", e);
+        eprintln!("[Tauri] ERROR finding Python: {}", e);
         e.to_string()
     })?;
     
@@ -244,7 +265,7 @@ async fn ensure_backend_running(state: State<'_, BackendProcess>) -> Result<(), 
             Ok(())
         }
         Err(e) => {
-            eprintln!("[Tauri] ERROR: {}", e);
+            eprintln!("[Tauri] ERROR starting backend: {}", e);
             Err(e.to_string())
         }
     }
