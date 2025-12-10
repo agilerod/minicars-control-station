@@ -207,7 +207,36 @@ def start_pipeline(config: StreamConfig) -> bool:
             logger.debug("Pipeline already running")
             return True
         else:
+            # Pipeline died - capture error output
             logger.warning(f"Previous pipeline died (exit code: {poll_result})")
+            stderr_output = ""
+            stdout_output = ""
+            try:
+                # Try to read remaining output
+                try:
+                    stdout_bytes, stderr_bytes = _pipeline_proc.communicate(timeout=1.0)
+                    if stderr_bytes:
+                        stderr_output = stderr_bytes.decode('utf-8', errors='replace').strip()
+                    if stdout_bytes:
+                        stdout_output = stdout_bytes.decode('utf-8', errors='replace').strip()
+                except subprocess.TimeoutExpired:
+                    _pipeline_proc.kill()
+                    try:
+                        stdout_bytes, stderr_bytes = _pipeline_proc.communicate(timeout=0.5)
+                        if stderr_bytes:
+                            stderr_output = stderr_bytes.decode('utf-8', errors='replace').strip()
+                        if stdout_bytes:
+                            stdout_output = stdout_bytes.decode('utf-8', errors='replace').strip()
+                    except:
+                        pass
+            except Exception as e:
+                logger.debug(f"Could not read previous pipeline output: {e}")
+            
+            if stderr_output:
+                logger.error(f"Previous pipeline stderr:\n{stderr_output}")
+            if stdout_output:
+                logger.error(f"Previous pipeline stdout:\n{stdout_output}")
+            
             _pipeline_proc = None
     
     # Try to restart nvargus-daemon before starting pipeline (optional, may fail if sudo requires password)
@@ -401,6 +430,48 @@ def main_loop(config: StreamConfig) -> None:
             
             # Pipeline state
             pipeline_running = _pipeline_proc is not None and _pipeline_proc.poll() is None
+            
+            # Check if pipeline died while we thought it was running
+            if _pipeline_proc is not None and not pipeline_running:
+                # Pipeline died - capture error output
+                exit_code = _pipeline_proc.poll()
+                logger.warning(f"Pipeline died unexpectedly (exit code: {exit_code})")
+                
+                # Try to capture stderr/stdout
+                stderr_output = ""
+                stdout_output = ""
+                try:
+                    # Use communicate() with timeout to get remaining output
+                    try:
+                        stdout_bytes, stderr_bytes = _pipeline_proc.communicate(timeout=1.0)
+                        if stderr_bytes:
+                            stderr_output = stderr_bytes.decode('utf-8', errors='replace').strip()
+                        if stdout_bytes:
+                            stdout_output = stdout_bytes.decode('utf-8', errors='replace').strip()
+                    except subprocess.TimeoutExpired:
+                        # Process already finished, try to read what's available
+                        try:
+                            _pipeline_proc.kill()
+                            stdout_bytes, stderr_bytes = _pipeline_proc.communicate(timeout=0.5)
+                            if stderr_bytes:
+                                stderr_output = stderr_bytes.decode('utf-8', errors='replace').strip()
+                            if stdout_bytes:
+                                stdout_output = stdout_bytes.decode('utf-8', errors='replace').strip()
+                        except:
+                            pass
+                except Exception as e:
+                    logger.debug(f"Could not read pipeline output: {e}")
+                
+                if stderr_output:
+                    logger.error(f"GStreamer stderr (pipeline died):\n{stderr_output}")
+                if stdout_output:
+                    logger.error(f"GStreamer stdout (pipeline died):\n{stdout_output}")
+                if not stderr_output and not stdout_output:
+                    logger.error("No output captured from failed pipeline.")
+                
+                # Clean up the dead process
+                _pipeline_proc = None
+                pipeline_running = False
             
             if should_run:
                 if not pipeline_running:
