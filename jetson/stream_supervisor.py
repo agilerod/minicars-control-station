@@ -382,7 +382,7 @@ def main_loop(config: StreamConfig) -> None:
     Args:
         config: Stream configuration
     """
-    global _last_restart_attempt
+    global _pipeline_proc, _last_restart_attempt
     
     logger.info("=" * 60)
     logger.info("MiniCars Stream Supervisor Starting")
