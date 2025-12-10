@@ -1,6 +1,7 @@
 {
   "control_station_host": "SKLNx.local",
   "video_port": 5000,
+  "backend_port": 8000,
   "camera_device": "nvarguscamerasrc",
   "ssid": null,
   "resolution": {

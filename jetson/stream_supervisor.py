@@ -7,6 +7,7 @@ for camera streaming. Only starts pipeline when control station is reachable
 and (optionally) when connected to the correct WiFi SSID.
 """
 import logging
+import os
 import socket
 import subprocess
 import sys
@@ -176,6 +177,19 @@ def start_pipeline(config: StreamConfig) -> bool:
     """
     global _pipeline_proc
     
+    # Check for duplicate pipelines (safety check)
+    existing_processes = subprocess.run(
+        ["pgrep", "-f", "gst-launch-1.0.*nvarguscamerasrc"],
+        capture_output=True,
+        text=True
+    )
+    if existing_processes.returncode == 0:
+        pids = existing_processes.stdout.strip().split('\n')
+        pids = [p for p in pids if p and p != str(os.getpid())]  # Exclude current process
+        if pids:
+            logger.warning(f"Found {len(pids)} existing pipeline process(es): {pids}")
+            logger.warning("Another pipeline may already be running. Attempting to continue anyway.")
+    
     if _pipeline_proc is not None:
         # Pipeline already running, check if it's still alive
         poll_result = _pipeline_proc.poll()
@@ -231,31 +245,52 @@ def start_pipeline(config: StreamConfig) -> bool:
 def stop_pipeline() -> None:
     """
     Stop GStreamer pipeline gracefully.
+    Also stops any duplicate pipelines that may be running.
     """
     global _pipeline_proc
     
-    if _pipeline_proc is None:
-        return
-    
     logger.info("Stopping GStreamer pipeline...")
     
-    try:
-        # Try graceful termination
-        _pipeline_proc.terminate()
-        
+    # Stop managed pipeline
+    if _pipeline_proc is not None:
         try:
-            _pipeline_proc.wait(timeout=3.0)
-            logger.info("Pipeline stopped gracefully")
-        except subprocess.TimeoutExpired:
-            # Force kill if it doesn't stop
-            logger.warning("Pipeline did not stop gracefully, forcing kill...")
-            _pipeline_proc.kill()
-            _pipeline_proc.wait()
-            logger.info("Pipeline killed")
+            # Try graceful termination
+            _pipeline_proc.terminate()
+            
+            try:
+                _pipeline_proc.wait(timeout=3.0)
+                logger.info("Pipeline stopped gracefully")
+            except subprocess.TimeoutExpired:
+                # Force kill if it doesn't stop
+                logger.warning("Pipeline did not stop gracefully, forcing kill...")
+                _pipeline_proc.kill()
+                _pipeline_proc.wait()
+                logger.info("Pipeline killed")
+        except Exception as e:
+            logger.error(f"Error stopping managed pipeline: {e}")
+        finally:
+            _pipeline_proc = None
+    
+    # Safety: Also check for and stop any orphaned pipelines
+    try:
+        existing_processes = subprocess.run(
+            ["pgrep", "-f", "gst-launch-1.0.*nvarguscamerasrc"],
+            capture_output=True,
+            text=True
+        )
+        if existing_processes.returncode == 0:
+            pids = existing_processes.stdout.strip().split('\n')
+            pids = [p for p in pids if p and p != str(os.getpid())]
+            if pids:
+                logger.warning(f"Found {len(pids)} orphaned pipeline process(es): {pids}. Stopping them...")
+                for pid in pids:
+                    try:
+                        os.kill(int(pid), 15)  # SIGTERM
+                        logger.info(f"Sent SIGTERM to orphaned pipeline PID {pid}")
+                    except (ValueError, ProcessLookupError, PermissionError) as e:
+                        logger.warning(f"Could not stop PID {pid}: {e}")
     except Exception as e:
-        logger.error(f"Error stopping pipeline: {e}")
-    finally:
-        _pipeline_proc = None
+        logger.warning(f"Error checking for orphaned pipelines: {e}")
 
 
 def main_loop(config: StreamConfig) -> None:
@@ -272,11 +307,28 @@ def main_loop(config: StreamConfig) -> None:
     logger.info("=" * 60)
     logger.info("MiniCars Stream Supervisor Starting")
     logger.info("=" * 60)
-    logger.info(f"Control station: {config.control_station_host}:{config.video_port}")
+    logger.info(f"Control station: {config.control_station_host}")
+    logger.info(f"  Video stream (UDP): port {config.video_port}")
+    logger.info(f"  Backend check (TCP): port {config.backend_port}")
     logger.info(f"SSID check: {config.ssid or '(disabled)'}")
     logger.info(f"Resolution: {config.resolution.width}x{config.resolution.height}@{config.framerate}fps")
     logger.info(f"Bitrate: {config.bitrate} bps")
     logger.info("=" * 60)
+    
+    # Safety check: Verify no other supervisor instance is running
+    current_pid = os.getpid()
+    supervisor_processes = subprocess.run(
+        ["pgrep", "-f", "stream_supervisor.py"],
+        capture_output=True,
+        text=True
+    )
+    if supervisor_processes.returncode == 0:
+        pids = [p for p in supervisor_processes.stdout.strip().split('\n') if p and p != str(current_pid)]
+        if pids:
+            logger.warning(f"WARNING: Found {len(pids)} other stream_supervisor process(es) with PIDs: {pids}")
+            logger.warning("Multiple supervisors may cause conflicts. Consider stopping duplicates.")
+    else:
+        logger.debug("No duplicate supervisor processes detected")
     
     iteration = 0
     consecutive_failures = 0
@@ -287,8 +339,9 @@ def main_loop(config: StreamConfig) -> None:
         current_time = time.time()
         
         try:
-            # Check host reachability
-            host_reachable = check_host_reachable(config.control_station_host, config.video_port)
+            # Check backend reachability (TCP port 8000 for backend API)
+            # This is more reliable than checking UDP video port
+            host_reachable = check_host_reachable(config.control_station_host, config.backend_port)
             
             # Check SSID if required
             ssid_ok = check_ssid_match(config.ssid)
@@ -304,7 +357,7 @@ def main_loop(config: StreamConfig) -> None:
                     # Check if we should attempt restart (respect cooldown)
                     time_since_last_attempt = current_time - _last_restart_attempt
                     if time_since_last_attempt >= _restart_delay:
-                        logger.info("Host reachable, starting pipeline...")
+                        logger.info(f"Backend reachable at {config.control_station_host}:{config.backend_port}, starting pipeline...")
                         if start_pipeline(config):
                             consecutive_failures = 0
                             _last_restart_attempt = current_time
@@ -320,29 +373,29 @@ def main_loop(config: StreamConfig) -> None:
                         wait_time = _restart_delay - time_since_last_attempt
                         logger.debug(f"Waiting {wait_time:.1f}s before retry...")
                 else:
-                    # Pipeline running and host reachable - all good
+                    # Pipeline running and backend reachable - all good
                     if iteration % 20 == 0:  # Log every ~60 seconds (20 * 3s)
-                        logger.debug("Pipeline running, host reachable")
+                        logger.info(f"Pipeline running, backend reachable at {config.control_station_host}:{config.backend_port}")
             else:
                 if pipeline_running:
                     # Host not reachable but pipeline is running - stop it
                     reason = []
                     if not host_reachable:
-                        reason.append("host unreachable")
+                        reason.append(f"backend unreachable at {config.control_station_host}:{config.backend_port}")
                     if not ssid_ok:
                         reason.append(f"SSID mismatch (required: {config.ssid})")
-                    logger.info(f"Host/SSID not OK ({', '.join(reason)}), stopping pipeline")
+                    logger.info(f"Backend/SSID not OK ({', '.join(reason)}), stopping pipeline")
                     stop_pipeline()
                     consecutive_failures = 0
                 else:
-                    # Host not reachable and no pipeline - just wait
+                    # Backend not reachable and no pipeline - just wait
                     if iteration % 10 == 0:  # Log every ~30 seconds
                         reason = []
                         if not host_reachable:
-                            reason.append("host unreachable")
+                            reason.append(f"backend unreachable at {config.control_station_host}:{config.backend_port}")
                         if not ssid_ok:
                             reason.append(f"SSID mismatch")
-                        logger.debug(f"Waiting for connectivity... ({', '.join(reason)})")
+                        logger.info(f"Waiting for backend connectivity... ({', '.join(reason)})")
             
         except KeyboardInterrupt:
             logger.info("Interrupted by user")

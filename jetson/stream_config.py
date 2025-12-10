@@ -28,6 +28,7 @@ class StreamConfig:
     Attributes:
         control_station_host: IP or hostname of control station (laptop)
         video_port: UDP port for video stream
+        backend_port: TCP port for backend connectivity check (default: 8000)
         camera_device: Camera device name (typically "nvarguscamerasrc")
         ssid: WiFi SSID to require (None or empty string = no SSID check)
         resolution: Video resolution (width, height)
@@ -37,6 +38,7 @@ class StreamConfig:
     """
     control_station_host: str
     video_port: int
+    backend_port: int  # TCP port for connectivity check (default 8000)
     camera_device: str
     ssid: Optional[str]
     resolution: ResolutionConfig
@@ -103,6 +105,13 @@ def load_config() -> StreamConfig:
             f"[STREAM-CONFIG] Invalid 'video_port': {video_port} (must be 1-65535)"
         )
     
+    # Backend port for connectivity check (optional, default 8000)
+    backend_port = data.get("backend_port", 8000)
+    if not isinstance(backend_port, int) or backend_port < 1 or backend_port > 65535:
+        raise StreamConfigError(
+            f"[STREAM-CONFIG] Invalid 'backend_port': {backend_port} (must be 1-65535)"
+        )
+    
     if not data.get("camera_device"):
         raise StreamConfigError(
             "[STREAM-CONFIG] Missing or empty 'camera_device'"
@@ -155,11 +164,12 @@ def load_config() -> StreamConfig:
         ssid = None
     
     logger.info(f"[STREAM-CONFIG] Loaded config from {config_path}")
-    logger.info(f"[STREAM-CONFIG] Host: {data['control_station_host']}, Port: {video_port}")
+    logger.info(f"[STREAM-CONFIG] Host: {data['control_station_host']}, Video Port: {video_port}, Backend Port: {backend_port}")
     
     return StreamConfig(
         control_station_host=data["control_station_host"],
         video_port=video_port,
+        backend_port=backend_port,
         camera_device=data["camera_device"],
         ssid=ssid,
         resolution=resolution,
@@ -180,7 +190,8 @@ def validate_config() -> None:
         config = load_config()
         print(f"[STREAM-CONFIG] ✓ Configuration valid")
         print(f"[STREAM-CONFIG]   Host: {config.control_station_host}")
-        print(f"[STREAM-CONFIG]   Port: {config.video_port}")
+        print(f"[STREAM-CONFIG]   Video Port: {config.video_port}")
+        print(f"[STREAM-CONFIG]   Backend Port: {config.backend_port}")
         print(f"[STREAM-CONFIG]   SSID: {config.ssid or '(no check)'}")
         print(f"[STREAM-CONFIG]   Resolution: {config.resolution.width}x{config.resolution.height}")
         print(f"[STREAM-CONFIG]   Framerate: {config.framerate} fps")
