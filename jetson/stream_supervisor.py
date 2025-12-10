@@ -105,13 +105,18 @@ def restart_nvargus_daemon() -> bool:
     """
     Restart nvargus-daemon to avoid capture session errors.
     
+    Note: This requires sudo without password (configured via sudoers).
+    If sudo fails, we continue anyway as the pipeline might work without restart.
+    
     Returns:
         True if restart succeeded, False otherwise
     """
     try:
         logger.info("Restarting nvargus-daemon...")
+        # Try to restart without password prompt (requires sudoers config)
+        # If it fails, we'll continue anyway
         result = subprocess.run(
-            ["sudo", "systemctl", "restart", "nvargus-daemon"],
+            ["sudo", "-n", "systemctl", "restart", "nvargus-daemon"],
             capture_output=True,
             text=True,
             timeout=10.0
@@ -121,7 +126,12 @@ def restart_nvargus_daemon() -> bool:
             logger.info("nvargus-daemon restarted successfully")
             return True
         else:
-            logger.warning(f"nvargus-daemon restart failed: {result.stderr}")
+            # If sudo requires password, log warning but continue
+            if "password" in result.stderr.lower() or "no tty" in result.stderr.lower():
+                logger.warning("nvargus-daemon restart skipped (sudo requires password). Pipeline may still work.")
+                logger.warning("To enable auto-restart, configure sudoers: jetson-rod ALL=(ALL) NOPASSWD: /bin/systemctl restart nvargus-daemon")
+            else:
+                logger.warning(f"nvargus-daemon restart failed: {result.stderr}")
             return False
     except subprocess.TimeoutExpired:
         logger.warning("nvargus-daemon restart timeout")
@@ -200,11 +210,16 @@ def start_pipeline(config: StreamConfig) -> bool:
             logger.warning(f"Previous pipeline died (exit code: {poll_result})")
             _pipeline_proc = None
     
-    # Restart nvargus-daemon before starting pipeline
-    restart_nvargus_daemon()
+    # Try to restart nvargus-daemon before starting pipeline (optional, may fail if sudo requires password)
+    # If it fails, we continue anyway - the pipeline might work without restart
+    nvargus_restarted = restart_nvargus_daemon()
     
-    # Wait a bit for nvargus-daemon to stabilize
-    time.sleep(2)
+    # Only wait if we successfully restarted nvargus-daemon
+    if nvargus_restarted:
+        logger.debug("Waiting for nvargus-daemon to stabilize...")
+        time.sleep(2)
+    else:
+        logger.debug("Skipping nvargus-daemon stabilization wait (restart was skipped)")
     
     # Build and launch pipeline
     gst_cmd = build_gstreamer_pipeline(config)
@@ -220,16 +235,58 @@ def start_pipeline(config: StreamConfig) -> bool:
             text=True
         )
         
-        # Give it a moment to start
-        time.sleep(0.5)
+        # Give it a moment to start and check for immediate failures
+        time.sleep(1.0)  # Increased wait time to catch initialization errors
         
         # Check if it's still running
         poll_result = _pipeline_proc.poll()
         if poll_result is not None:
-            # Process died immediately
-            stderr_output = _pipeline_proc.stderr.read() if _pipeline_proc.stderr else "No stderr"
+            # Process died immediately - read stderr for diagnostics
+            stderr_output = ""
+            try:
+                if _pipeline_proc.stderr:
+                    # Read available stderr (non-blocking)
+                    import select
+                    import fcntl
+                    
+                    # Try to read what's available
+                    stderr_lines = []
+                    try:
+                        # Set stderr to non-blocking
+                        flags = fcntl.fcntl(_pipeline_proc.stderr.fileno(), fcntl.F_GETFL)
+                        fcntl.fcntl(_pipeline_proc.stderr.fileno(), fcntl.F_SETFL, flags | os.O_NONBLOCK)
+                        
+                        # Read available lines
+                        while True:
+                            line = _pipeline_proc.stderr.readline()
+                            if not line:
+                                break
+                            stderr_lines.append(line.strip())
+                            if len(stderr_lines) >= 20:  # Limit to 20 lines
+                                break
+                    except (OSError, AttributeError):
+                        # Fallback: try reading anyway
+                        try:
+                            for _ in range(20):
+                                line = _pipeline_proc.stderr.readline()
+                                if not line:
+                                    break
+                                stderr_lines.append(line.strip())
+                        except:
+                            pass
+                    
+                    stderr_output = '\n'.join(stderr_lines) if stderr_lines else "No stderr output captured"
+                else:
+                    stderr_output = "No stderr pipe available"
+            except Exception as e:
+                stderr_output = f"Could not read stderr: {e}"
+            
             logger.error(f"Pipeline failed to start (exit code: {poll_result})")
-            logger.error(f"Error output: {stderr_output}")
+            if stderr_output and stderr_output != "No stderr output captured":
+                logger.error(f"GStreamer error output:\n{stderr_output}")
+            else:
+                logger.error("No error output captured. Pipeline may have failed during initialization.")
+                logger.error("Common causes: camera device busy, nvargus-daemon issues, or permission problems.")
             _pipeline_proc = None
             return False
         
