@@ -227,7 +227,25 @@ class JoystickSender:
                 
                 # Send using TCP format (6-field) that bridge expects
                 # Format: "servo,throttle,brake,handbrake,turbo,mode\n"
-                self._socket.sendall(msg.to_tcp_format().encode("ascii"))
+                tcp_msg = msg.to_tcp_format()
+                self._socket.sendall(tcp_msg.encode("ascii"))
+                
+                # Log values periodically for debugging (every 50 messages ~2.5 seconds at 20Hz)
+                if hasattr(self, '_debug_counter'):
+                    self._debug_counter += 1
+                else:
+                    self._debug_counter = 0
+                
+                if self._debug_counter % 50 == 0:
+                    logger.debug(
+                        f"[joystick-sender] Values: "
+                        f"servo={servo_normalized:.3f}, "
+                        f"throttle={throttle:.3f}, "
+                        f"brake={brake_normalized:.3f}, "
+                        f"mode={active_mode}, "
+                        f"raw_accel={accel_raw:.3f}, "
+                        f"raw_brake={brake_raw:.3f}"
+                    )
                 
                 # Maintain frequency
                 now = time.perf_counter()

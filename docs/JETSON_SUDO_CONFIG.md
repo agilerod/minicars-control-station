@@ -1,4 +1,4 @@
-# Configurar Sudo Sin Contraseña para nvargus-daemon (Opcional)
+pu# Configurar Sudo Sin Contraseña para nvargus-daemon (Opcional)
 
 ## Problema
 

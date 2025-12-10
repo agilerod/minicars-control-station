@@ -328,7 +328,7 @@ class TCPUARTBridge:
                     if msg is None:
                         invalid_count += 1
                         if invalid_count % 100 == 1:  # Rate-limit logging
-                            logger.warning(f"Invalid message: {line[:50]}")
+                            logger.warning(f"Invalid message (count={invalid_count}): {line[:80]}")
                         continue
                     
                     # Reset invalid counter on valid message
@@ -347,10 +347,21 @@ class TCPUARTBridge:
                         try:
                             self.uart.write(uart_cmd.encode('ascii'))
                             self.uart.flush()
-                            logger.debug(f"Sent to UART: {uart_cmd.strip()}")
+                            # Log every 50 messages (~2.5 seconds at 20Hz) for debugging
+                            if not hasattr(self, '_uart_log_counter'):
+                                self._uart_log_counter = 0
+                            self._uart_log_counter += 1
+                            if self._uart_log_counter % 50 == 0:
+                                logger.info(
+                                    f"Sent to UART (msg #{self._uart_log_counter}): {uart_cmd.strip()} | "
+                                    f"parsed: servo={msg.servo:.3f}, throttle={msg.throttle:.3f}, "
+                                    f"brake={msg.brake:.3f}, mode={msg.mode}"
+                                )
                         except Exception as e:
                             logger.error(f"Failed to write to UART: {e}")
                             break
+                    else:
+                        logger.warning("UART not open, cannot send command")
                     
         except Exception as e:
             logger.error(f"Error handling client: {e}")
