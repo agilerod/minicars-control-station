@@ -40,8 +40,63 @@ class ResolutionConfig:
         return f"ResolutionConfig(width={self.width}, height={self.height})"
 
 
-@dataclass if _HAS_DATACLASS else lambda x: x
-class StreamConfig:
+# Define StreamConfig class - compatible with both Python 3.6+ and 3.7+
+if _HAS_DATACLASS:
+    # Python 3.7+: Use dataclass
+    @dataclass
+    class StreamConfig:
+        """
+        Streaming configuration for Jetson camera.
+        
+        Attributes:
+            control_station_host: IP or hostname of control station (laptop)
+            video_port: UDP port for video stream
+            backend_port: TCP port for backend connectivity check (default: 8000)
+            camera_device: Camera device name (typically "nvarguscamerasrc")
+            ssid: WiFi SSID to require (None or empty string = no SSID check)
+            resolution: Video resolution (width, height)
+            framerate: Video framerate (fps)
+            bitrate: Video bitrate (bits per second)
+            flip_method: Video flip method (0=none, 2=180°, etc.)
+        """
+        control_station_host: str
+        video_port: int
+        backend_port: int  # TCP port for connectivity check (default 8000)
+        camera_device: str
+        ssid: Optional[str]
+        resolution: ResolutionConfig
+        framerate: int
+        bitrate: int
+        flip_method: int
+else:
+    # Python 3.6: Manual class definition
+    class StreamConfig:
+        """
+        Streaming configuration for Jetson camera.
+        
+        Attributes:
+            control_station_host: IP or hostname of control station (laptop)
+            video_port: UDP port for video stream
+            backend_port: TCP port for backend connectivity check (default: 8000)
+            camera_device: Camera device name (typically "nvarguscamerasrc")
+            ssid: WiFi SSID to require (None or empty string = no SSID check)
+            resolution: Video resolution (width, height)
+            framerate: Video framerate (fps)
+            bitrate: Video bitrate (bits per second)
+            flip_method: Video flip method (0=none, 2=180°, etc.)
+        """
+        def __init__(self, control_station_host: str, video_port: int, backend_port: int,
+                     camera_device: str, ssid: Optional[str], resolution: ResolutionConfig,
+                     framerate: int, bitrate: int, flip_method: int):
+            self.control_station_host = control_station_host
+            self.video_port = video_port
+            self.backend_port = backend_port
+            self.camera_device = camera_device
+            self.ssid = ssid
+            self.resolution = resolution
+            self.framerate = framerate
+            self.bitrate = bitrate
+            self.flip_method = flip_method
     """
     Streaming configuration for Jetson camera.
     
@@ -155,11 +210,8 @@ def load_config() -> StreamConfig:
             f"[STREAM-CONFIG] Invalid 'resolution.height': {height}"
         )
     
-    # Create ResolutionConfig (works with or without dataclass)
-    if _HAS_DATACLASS:
-        resolution = ResolutionConfig(width=width, height=height)
-    else:
-        resolution = ResolutionConfig(width=width, height=height)
+    # Create ResolutionConfig
+    resolution = ResolutionConfig(width=width, height=height)
     
     # Parse framerate
     framerate = data.get("framerate", 30)
@@ -190,32 +242,18 @@ def load_config() -> StreamConfig:
     logger.info(f"[STREAM-CONFIG] Loaded config from {config_path}")
     logger.info(f"[STREAM-CONFIG] Host: {data['control_station_host']}, Video Port: {video_port}, Backend Port: {backend_port}")
     
-    # Create StreamConfig (works with or without dataclass)
-    if _HAS_DATACLASS:
-        return StreamConfig(
-            control_station_host=data["control_station_host"],
-            video_port=video_port,
-            backend_port=backend_port,
-            camera_device=data["camera_device"],
-            ssid=ssid,
-            resolution=resolution,
-            framerate=framerate,
-            bitrate=bitrate,
-            flip_method=flip_method,
-        )
-    else:
-        # Manual initialization for Python < 3.7
-        config = StreamConfig.__new__(StreamConfig)
-        config.control_station_host = data["control_station_host"]
-        config.video_port = video_port
-        config.backend_port = backend_port
-        config.camera_device = data["camera_device"]
-        config.ssid = ssid
-        config.resolution = resolution
-        config.framerate = framerate
-        config.bitrate = bitrate
-        config.flip_method = flip_method
-        return config
+    # Create StreamConfig (works the same way for both Python 3.6 and 3.7+)
+    return StreamConfig(
+        control_station_host=data["control_station_host"],
+        video_port=video_port,
+        backend_port=backend_port,
+        camera_device=data["camera_device"],
+        ssid=ssid,
+        resolution=resolution,
+        framerate=framerate,
+        bitrate=bitrate,
+        flip_method=flip_method,
+    )
 
 
 def validate_config() -> None:
